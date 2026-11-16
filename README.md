@@ -44,6 +44,9 @@ discovery interval is 300 seconds with a 30-minute overlapping lookback. Tune
 sleeping, shut down, or disconnected computer creates collection gaps that
 cannot be recovered from historical Twitch clip view counts.
 Run only one collector process against a given database at a time.
+The collector enforces this with a local OS file lock; status remains available.
+Snapshot jobs are checked every five seconds between discovery cycles and before
+each discovery page. Slow HTTP calls and rate-limit waits can still delay them.
 
 The SQLite database defaults to `data/viralclip.sqlite3`; override it with
 `VIRALCLIP_DB_PATH` or the global `--db` option. SQLite uses WAL, foreign keys,
@@ -62,15 +65,30 @@ timestamp are ignored. Twitch discovery is popularity-ordered and limited, so
 the database records windows that may be truncated and does not claim
 exhaustive coverage.
 
+Jobs retain their target ages separately from actual measurement ages. After a
+restart, multiple overdue targets may share one current snapshot, linked through
+`jobs.snapshot_id`; that observation is not an on-time historical measurement.
+Failed jobs retry after at least 30 seconds, up to three job attempts (each HTTP
+request also has bounded retries). Exhausted jobs remain failed for inspection.
+Discovery uses at most 20 logical page requests per category cycle, splitting
+windows near 900 results. Incomplete windows are marked partial and do not advance
+the category checkpoint. Severe saturation can prevent catch-up; inspect coverage
+before using these observations for research.
+
 The API and application access remain subject to Twitch rate limits and terms.
 This project stores operational clip metadata locally; review applicable Twitch
 terms before redistributing collected data or derived datasets.
 
 ## Milestone and project progress
 
+See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the maintained milestone checklist,
+saved session context, verification evidence, blockers and next steps. Milestone 0
+as a whole remains **in progress** until real collection is verified.
+
 - [x] **Milestone 0 — Collector MVP:** CLI, Twitch OAuth/Helix client, SQLite
   migrations, discovery, persistent snapshot jobs, retry/rate-limit handling,
-  and mocked tests are implemented. The 15-test suite and Ruff checks pass.
+  and mocked tests are implemented. The independent audit's 48-test suite and
+  Ruff checks pass; see [the audit report](docs/MILESTONE_0_AUDIT.md).
 - [ ] **Milestone 0 — Live collection verification:** pending Twitch credentials.
   No live Twitch request or continuous collection has been run yet.
 - [ ] **Milestone 1 — 24/7 operations:** not started.

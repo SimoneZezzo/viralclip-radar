@@ -31,10 +31,15 @@ def clip(clip_id: str = "clip-1", *, created_at: datetime = NOW, views: int = 17
 
 
 def make_client(handler, *, sleep=lambda _delay: None) -> TwitchClient:
+    def validated_handler(request):
+        if request.url.path.endswith("/oauth2/validate"):
+            return httpx.Response(200, json={"client_id": "client-id", "expires_in": 3600})
+        return handler(request)
+
     return TwitchClient(
         "client-id",
         "client-secret",
-        http=httpx.Client(transport=httpx.MockTransport(handler)),
+        http=httpx.Client(transport=httpx.MockTransport(validated_handler)),
         sleep=sleep,
         jitter=lambda _low, _high: 0,
     )
@@ -174,7 +179,12 @@ def test_due_snapshot_batches_under_one_hundred_and_handles_unordered_results(
         requested_batches.append(ids)
         return httpx.Response(
             200,
-            json={"data": [{"id": clip_id, **clip(clip_id)} for clip_id in reversed(ids)]},
+            json={
+                "data": [
+                    clip(clip_id, views=100 + int(clip_id.split("-")[1]))
+                    for clip_id in reversed(ids)
+                ]
+            },
         )
 
     twitch = make_client(handler)
@@ -186,7 +196,9 @@ def test_due_snapshot_batches_under_one_hundred_and_handles_unordered_results(
         "SELECT clip_id, view_count FROM clip_snapshots WHERE source = 'scheduled'"
     ).fetchall()
     assert {row["clip_id"] for row in stored} == set(clip_ids)
-    assert all(row["view_count"] == 17 for row in stored)
+    assert {row["clip_id"]: row["view_count"] for row in stored} == {
+        clip_id: 100 + int(clip_id.split("-")[1]) for clip_id in clip_ids
+    }
     database.close()
     twitch.http.close()
 
@@ -262,6 +274,8 @@ def test_rate_limit_remaining_defers_next_request_until_reset() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal api_requests
+        if request.url.path.endswith("/oauth2/validate"):
+            return httpx.Response(200, json={"client_id": "client-id", "expires_in": 3600})
         if request.url.path.endswith("/oauth2/token"):
             return httpx.Response(200, json={"access_token": "token", "expires_in": 3600})
         api_requests += 1

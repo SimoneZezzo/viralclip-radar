@@ -39,7 +39,11 @@ def _print_status(database: Database) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    settings = load_settings()
+    try:
+        settings = load_settings()
+    except ValueError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        return 2
     if args.db:
         settings = settings.__class__(
             **{**settings.__dict__, "db_path": settings.db_path.__class__(args.db).expanduser()}
@@ -79,13 +83,18 @@ def main(argv: list[str] | None = None) -> int:
                 print("Collection cycle completed.")
                 return 0
             print("Continuous collection started. Press Ctrl+C to stop.")
+            next_discovery = 0.0
             while True:
                 try:
-                    collector.collect_cycle(games, game_ids)
+                    if time.monotonic() >= next_discovery:
+                        next_discovery = time.monotonic() + settings.discovery_interval_seconds
+                        collector.collect_cycle(games, game_ids)
+                    else:
+                        collector.collect_due_snapshots()
                 except TwitchAPIError as exc:
                     database.record_error(utc_now(), str(exc))
                     print(f"Collection cycle failed: {exc}", file=sys.stderr)
-                time.sleep(settings.discovery_interval_seconds)
+                time.sleep(min(5, settings.discovery_interval_seconds))
         except KeyboardInterrupt:
             print("\nCollection stopped.")
             return 0

@@ -4,6 +4,7 @@ import random
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -41,6 +42,7 @@ class TwitchClient:
         self._token: str | None = None
         self._token_expires_at = 0.0
         self._rate_limit_reset_at = 0.0
+        self._validated_at = float("-inf")
 
     def close(self) -> None:
         if self._owns_http:
@@ -80,29 +82,76 @@ class TwitchClient:
             break
         else:
             raise TwitchAPIError("Twitch OAuth request failed after retries")
-        payload = response.json()
-        self._token = payload["access_token"]
-        self._token_expires_at = self.wall_clock() + int(payload.get("expires_in", 0))
+        try:
+            payload = response.json()
+            token = payload["access_token"]
+            expires = payload["expires_in"]
+            if not isinstance(token, str) or not token or type(expires) is not int or expires <= 0:
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            raise TwitchAPIError("Twitch OAuth returned an invalid token response") from None
+        self._token = token
+        self._token_expires_at = self.wall_clock() + expires
+        self._validated_at = float("-inf")
         return self._token
+
+    def _validate_token(self, token: str) -> None:
+        if self.wall_clock() - self._validated_at < 3600:
+            return
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self.http.get(
+                    "https://id.twitch.tv/oauth2/validate",
+                    headers={"Authorization": f"OAuth {token}"},
+                )
+            except httpx.RequestError:
+                if attempt == self.max_retries:
+                    raise TwitchAPIError("Twitch token validation network failure") from None
+                self.sleep(self._retry_delay(None, attempt))
+                continue
+            if response.status_code == 429 or response.status_code >= 500:
+                if attempt == self.max_retries:
+                    raise TwitchAPIError("Twitch token validation failed after retries")
+                self.sleep(self._retry_delay(response, attempt))
+                continue
+            if response.status_code != 200:
+                self._token = None
+                raise TwitchAPIError("Twitch token validation rejected the token")
+            try:
+                payload = response.json()
+                if payload["client_id"] != self.client_id:
+                    raise ValueError
+            except (ValueError, KeyError, TypeError):
+                raise TwitchAPIError("Twitch returned invalid token validation data") from None
+            self._validated_at = self.wall_clock()
+            return
 
     def _retry_delay(self, response: httpx.Response | None, attempt: int) -> float:
         if response is not None and response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             reset = response.headers.get("Ratelimit-Reset")
+            waits = [min(30.0, 2**attempt) + self.jitter(0.0, 0.25)]
             if retry_after:
                 try:
-                    return max(0.0, float(retry_after))
+                    waits.append(float(retry_after))
                 except ValueError:
-                    pass
+                    try:
+                        waits.append(
+                            parsedate_to_datetime(retry_after).timestamp() - self.wall_clock()
+                        )
+                    except (ValueError, TypeError, OverflowError):
+                        pass
             if reset:
                 try:
-                    return max(0.0, float(reset) - self.wall_clock())
+                    waits.append(float(reset) - self.wall_clock())
                 except ValueError:
                     pass
+            return max(waits)
         return min(30.0, 2**attempt) + self.jitter(0.0, 0.25)
 
     def _get(self, path: str, params: dict | list[tuple[str, str]]) -> dict:
         token = self._get_token()
+        self._validate_token(token)
         refreshed = False
         retry = 0
         while True:
@@ -131,6 +180,7 @@ class TwitchClient:
                     pass
             if response.status_code == 401 and not refreshed:
                 token = self._get_token(force=True)
+                self._validate_token(token)
                 refreshed = True
                 continue
             if response.status_code == 429 or response.status_code >= 500:
@@ -144,16 +194,53 @@ class TwitchClient:
             if response.status_code >= 400:
                 raise TwitchAPIError(f"Twitch API request failed with HTTP {response.status_code}")
             try:
-                return response.json()
-            except ValueError as exc:
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise TypeError
+                return payload
+            except (ValueError, TypeError) as exc:
                 raise TwitchAPIError("Twitch API returned invalid JSON") from exc
 
     def search_categories(self, name: str) -> list[dict]:
-        payload = self._get("search/categories", {"query": name, "first": "100"})
-        categories = payload.get("data", [])
-        if not isinstance(categories, list):
-            raise TwitchAPIError("Twitch returned an invalid category list")
-        return categories
+        categories = []
+        cursor = None
+        for _ in range(10):
+            params = {"query": name, "first": "100"}
+            if cursor:
+                params["after"] = cursor
+            payload = self._get("search/categories", params)
+            page = self.parse_data(payload)
+            if any(
+                not isinstance(item.get("name"), str)
+                or not isinstance(item.get("id"), str)
+                or not item["id"]
+                for item in page
+            ):
+                raise TwitchAPIError("Twitch returned invalid category fields")
+            categories.extend(page)
+            if any(item["name"].casefold() == name.casefold() for item in page):
+                return categories
+            cursor = self.parse_cursor(payload)
+            if not cursor:
+                return categories
+        raise TwitchAPIError("Category search safety cap reached; use an explicit category ID")
+
+    @staticmethod
+    def parse_data(payload: dict) -> list[dict]:
+        data = payload.get("data")
+        if not isinstance(data, list) or any(not isinstance(item, dict) for item in data):
+            raise TwitchAPIError("Twitch returned an invalid data list")
+        return data
+
+    @staticmethod
+    def parse_cursor(payload: dict) -> str | None:
+        pagination = payload.get("pagination", {})
+        if not isinstance(pagination, dict):
+            raise TwitchAPIError("Twitch returned invalid pagination")
+        cursor = pagination.get("cursor")
+        if cursor is not None and not isinstance(cursor, str):
+            raise TwitchAPIError("Twitch returned invalid cursor")
+        return cursor or None
 
     def get_clips(
         self,
@@ -170,6 +257,8 @@ class TwitchClient:
         if game_id is not None:
             params.extend((("game_id", game_id), ("first", "100")))
             if started_at is not None:
+                if started_at.tzinfo is None or started_at.utcoffset() is None:
+                    raise ValueError("started_at must be timezone-aware")
                 params.append(
                     (
                         "started_at",
@@ -177,6 +266,8 @@ class TwitchClient:
                     )
                 )
             if ended_at is not None:
+                if ended_at.tzinfo is None or ended_at.utcoffset() is None:
+                    raise ValueError("ended_at must be timezone-aware")
                 params.append(
                     (
                         "ended_at",

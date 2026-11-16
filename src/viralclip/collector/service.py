@@ -20,6 +20,7 @@ class Collector:
         self.twitch = twitch
         self.lookback_minutes = lookback_minutes
         self.clock = clock
+        self.database.acquire_collector_lock()
         self.database.recover_running_jobs()
 
     def resolve_game(self, name: str) -> str:
@@ -51,31 +52,47 @@ class Collector:
 
     def discover(self, game_id: str) -> int:
         start, end = self._whole_minute_window(game_id, self.clock())
-        return self._discover_window(game_id, start, end, [20])
+        if not self.database.connection.execute(
+            "SELECT 1 FROM discovery_checkpoints WHERE game_id = ?", (game_id,)
+        ).fetchone():
+            self.database.update_watermark(game_id, start + timedelta(minutes=5))
+        count, complete = self._discover_window(game_id, start, end, [20])
+        if complete:
+            self.database.update_watermark(game_id, end)
+        return count
 
     def _discover_window(
         self, game_id: str, start: datetime, end: datetime, budget: list[int]
-    ) -> int:
+    ) -> tuple[int, bool]:
         run_id = self.database.create_run(game_id, start, end, self.clock())
         pages = 0
         requests = 0
-        all_clips: list[tuple[dict, datetime]] = []
+        seen = 0
+        unique_ids: set[str] = set()
+        new_count = 0
         truncated = False
         try:
             cursor = None
             while budget[0] > 0:
+                self.collect_due_snapshots()
+                requests += 1
+                budget[0] -= 1
                 payload = self.twitch.get_clips(
                     game_id=game_id, started_at=start, ended_at=end, after=cursor
                 )
-                requests += 1
-                budget[0] -= 1
                 pages += 1
-                page = payload.get("data", [])
-                if not isinstance(page, list):
-                    raise TwitchAPIError("Twitch returned an invalid clips list")
+                page = self.twitch.parse_data(payload)
                 page_observed_at = self.clock()
-                all_clips.extend((clip, page_observed_at) for clip in page)
-                cursor = payload.get("pagination", {}).get("cursor")
+                seen += len(page)
+                for raw_clip in page:
+                    clip = self._parse_clip(raw_clip)
+                    unique_ids.add(clip["id"])
+                    if self.database.record_clip(clip, game_id, page_observed_at, run_id):
+                        new_count += 1
+                cursor = self.twitch.parse_cursor(payload)
+                if seen >= 900:
+                    truncated = True
+                    break
                 if not cursor:
                     break
                 if pages >= 10:
@@ -84,13 +101,15 @@ class Collector:
             else:
                 truncated = True
 
-            new_count = 0
-            for raw_clip, observed_at in all_clips:
-                clip = self._parse_clip(raw_clip)
-                if self.database.record_clip(clip, game_id, observed_at, run_id):
-                    new_count += 1
             self.database.finish_run(
-                run_id, self.clock(), requests, pages, len(all_clips), new_count, truncated
+                run_id,
+                self.clock(),
+                requests,
+                pages,
+                seen,
+                new_count,
+                truncated,
+                unique=len(unique_ids),
             )
 
             span = (end - start).total_seconds()
@@ -98,21 +117,31 @@ class Collector:
                 midpoint = start + (end - start) / 2
                 midpoint = midpoint.replace(second=0, microsecond=0)
                 if start < midpoint < end:
-                    first = self._discover_window(game_id, start, midpoint, budget)
-                    second = self._discover_window(game_id, midpoint, end, budget)
-                    return new_count + first + second
-            if not truncated:
-                self.database.update_watermark(game_id, end)
-            return new_count
+                    first, left_complete = self._discover_window(game_id, start, midpoint, budget)
+                    second, right_complete = self._discover_window(game_id, midpoint, end, budget)
+                    return new_count + first + second, left_complete and right_complete
+            return new_count, not truncated
         except Exception as exc:
             self.database.finish_run(
-                run_id, self.clock(), requests, pages, len(all_clips), 0, truncated, str(exc)
+                run_id,
+                self.clock(),
+                requests,
+                pages,
+                seen,
+                new_count,
+                truncated,
+                str(exc),
+                unique=len(unique_ids),
             )
             raise
 
     @staticmethod
     def _parse_clip(raw: dict) -> dict:
         try:
+            if not isinstance(raw, dict) or not isinstance(raw.get("id"), str) or not raw["id"]:
+                raise ValueError("invalid clip ID")
+            if type(raw.get("view_count")) is not int or raw["view_count"] < 0:
+                raise ValueError("invalid view count")
             created_at = datetime.fromisoformat(raw["created_at"])
             if created_at.tzinfo is None or created_at.utcoffset() is None:
                 raise ValueError("created_at must include a timezone")
@@ -145,11 +174,10 @@ class Collector:
             self.database.start_jobs(job_ids)
             try:
                 payload = self.twitch.get_clips(clip_ids=batch)
-                results = {
-                    str(item["id"]): item
-                    for item in payload.get("data", [])
-                    if isinstance(item, dict) and "id" in item
-                }
+                page = self.twitch.parse_data(payload)
+                if any(not isinstance(item.get("id"), str) or not item["id"] for item in page):
+                    raise TwitchAPIError("Twitch returned invalid clip IDs")
+                results = {str(item["id"]): item for item in page}
             except TwitchAPIError as exc:
                 self.database.finish_jobs(job_ids, "failed", self.clock(), str(exc))
                 continue
@@ -170,22 +198,32 @@ class Collector:
                         int(clip_jobs[0]["target_age_seconds"]) if len(clip_jobs) == 1 else None
                     )
                     self.database.add_scheduled_snapshot(
-                        clip_id, observed_at, parsed["view_count"], target
+                        clip_id, observed_at, parsed["view_count"], target, ids
                     )
                 except (TwitchAPIError, ValueError) as exc:
                     self.database.finish_jobs(ids, "failed", observed_at, str(exc))
                     continue
-                self.database.finish_jobs(ids, "completed", observed_at)
                 completed += len(ids)
         return completed
 
     def collect_cycle(self, games: tuple[str, ...], game_ids: tuple[str, ...] = ()) -> None:
         self.collect_due_snapshots()
+        errors = []
         for name in games:
-            self.discover(self.resolve_game(name))
+            try:
+                self.discover(self.resolve_game(name))
+            except TwitchAPIError as exc:
+                self.database.record_error(self.clock(), str(exc))
+                errors.append(exc)
         for game_id in game_ids:
             if not self.database.connection.execute(
                 "SELECT 1 FROM games WHERE game_id = ?", (game_id,)
             ).fetchone():
                 self.database.upsert_game(game_id, game_id, self.clock())
-            self.discover(game_id)
+            try:
+                self.discover(game_id)
+            except TwitchAPIError as exc:
+                self.database.record_error(self.clock(), str(exc))
+                errors.append(exc)
+        if errors:
+            raise TwitchAPIError(f"{len(errors)} category collection(s) failed; first: {errors[0]}")

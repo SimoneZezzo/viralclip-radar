@@ -100,6 +100,11 @@ MIGRATIONS = (
         message TEXT NOT NULL
     );
     """,
+    """
+    ALTER TABLE jobs ADD COLUMN snapshot_id INTEGER REFERENCES clip_snapshots(snapshot_id);
+    ALTER TABLE jobs ADD COLUMN retry_at TEXT;
+    ALTER TABLE collection_runs ADD COLUMN unique_clips INTEGER NOT NULL DEFAULT 0;
+    """,
 )
 
 
@@ -134,9 +139,39 @@ class Database:
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA busy_timeout = 30000")
         self.migrate()
+        self._collector_lock = None
+
+    def acquire_collector_lock(self) -> None:
+        """Hold an OS lock until close; process death releases it automatically."""
+        if self._collector_lock is not None or str(self.path) == ":memory:":
+            return
+        import os
+
+        lock = open(str(self.path.resolve()) + ".collector.lock", "a+b")  # noqa: SIM115
+        try:
+            lock.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                if not lock.read(1):
+                    lock.write(b"0")
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            lock.close()
+            raise ValueError("Another collector is already using this database") from None
+        self._collector_lock = lock
 
     def close(self) -> None:
         self.connection.close()
+        if self._collector_lock is not None:
+            self._collector_lock.close()
+            self._collector_lock = None
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
@@ -191,6 +226,8 @@ class Database:
         self, clip: dict, game_id: str, observed_at: datetime, run_id: int | None
     ) -> bool:
         clip_id = str(clip["id"])
+        if observed_at < clip["created_at"]:
+            raise ValueError("clip creation is after observation time; check the system clock")
         created_at = to_utc_iso(clip["created_at"])
         seen_at = to_utc_iso(observed_at)
         with self.transaction() as conn:
@@ -242,7 +279,7 @@ class Database:
                 (
                     clip_id,
                     seen_at,
-                    max(0.0, (observed_at - clip["created_at"]).total_seconds()),
+                    (observed_at - clip["created_at"]).total_seconds(),
                     int(clip["view_count"]),
                     run_id,
                 ),
@@ -296,13 +333,14 @@ class Database:
         new: int,
         truncated: bool = False,
         error: str | None = None,
+        unique: int = 0,
     ) -> None:
         with self.transaction() as conn:
             conn.execute(
                 """
                 UPDATE collection_runs SET finished_at = ?, request_count = ?,
                     pages_seen = ?, clips_seen = ?, new_clips = ?, status = ?,
-                    potentially_truncated = ?, error_summary = ?
+                    potentially_truncated = ?, error_summary = ?, unique_clips = ?
                 WHERE run_id = ?
                 """,
                 (
@@ -311,9 +349,10 @@ class Database:
                     pages,
                     seen,
                     new,
-                    "error" if error else "completed",
+                    "error" if error else ("partial" if truncated else "completed"),
                     int(truncated),
                     error,
+                    unique,
                     run_id,
                 ),
             )
@@ -342,9 +381,10 @@ class Database:
                 SELECT j.*, c.created_at FROM jobs j JOIN clips c USING (clip_id)
                 WHERE j.status IN ('pending', 'failed') AND j.due_at <= ?
                     AND j.attempts < 3
+                    AND (j.retry_at IS NULL OR j.retry_at <= ?)
                 ORDER BY j.due_at LIMIT ?
                 """,
-                (to_utc_iso(now), limit),
+                (to_utc_iso(now), to_utc_iso(now), limit),
             )
         )
 
@@ -371,16 +411,28 @@ class Database:
                 f"WHERE job_id IN ({placeholders})",
                 [status, to_utc_iso(completed_at), error, *job_ids],
             )
+            if status == "failed":
+                conn.execute(
+                    f"UPDATE jobs SET retry_at = ? WHERE job_id IN ({placeholders})",
+                    [to_utc_iso(completed_at + timedelta(seconds=30)), *job_ids],
+                )
 
     def add_scheduled_snapshot(
-        self, clip_id: str, observed_at: datetime, view_count: int, target_age: int | None
+        self,
+        clip_id: str,
+        observed_at: datetime,
+        view_count: int,
+        target_age: int | None,
+        job_ids: list[int] | None = None,
     ) -> None:
         row = self.connection.execute(
             "SELECT created_at FROM clips WHERE clip_id = ?", (clip_id,)
         ).fetchone()
         if not row:
             raise ValueError(f"unknown clip ID {clip_id}")
-        age = max(0.0, (observed_at - parse_utc(row["created_at"])).total_seconds())
+        age = (observed_at - parse_utc(row["created_at"])).total_seconds()
+        if age < 0:
+            raise ValueError("clip creation is after observation time; check the system clock")
         with self.transaction() as conn:
             conn.execute(
                 """
@@ -390,9 +442,24 @@ class Database:
                 """,
                 (clip_id, to_utc_iso(observed_at), age, view_count, target_age),
             )
+            snapshot_id = conn.execute(
+                "SELECT snapshot_id FROM clip_snapshots "
+                "WHERE clip_id = ? AND observed_at = ? AND source = 'scheduled'",
+                (clip_id, to_utc_iso(observed_at)),
+            ).fetchone()[0]
+            for job_id in job_ids or []:
+                conn.execute(
+                    "UPDATE jobs SET status = 'completed', completed_at = ?, "
+                    "snapshot_id = ?, last_error = NULL WHERE job_id = ?",
+                    (to_utc_iso(observed_at), snapshot_id, job_id),
+                )
 
     def recover_running_jobs(self) -> None:
         with self.transaction() as conn:
+            conn.execute(
+                "UPDATE collection_runs SET status = 'error', "
+                "error_summary = 'interrupted before completion' WHERE status = 'running'"
+            )
             conn.execute(
                 """
                 UPDATE jobs SET status = CASE WHEN attempts < 3 THEN 'pending' ELSE 'failed' END,
@@ -408,7 +475,7 @@ class Database:
         latest = self.connection.execute(
             """
             SELECT finished_at FROM collection_runs
-            WHERE status = 'completed' AND error_summary IS NULL
+            WHERE status = 'completed' AND error_summary IS NULL AND potentially_truncated = 0
             ORDER BY finished_at DESC LIMIT 1
             """
         ).fetchone()
