@@ -312,6 +312,12 @@ class TwitchClient:
             except (ValueError, TypeError) as exc:
                 raise TwitchAPIError("Twitch API returned invalid JSON") from exc
 
+    def get_games(self, *, name: str | None = None, game_id: str | None = None) -> list[dict]:
+        if (name is None) == (game_id is None):
+            raise ValueError("provide exactly one game selector")
+        params = {"name": name} if name is not None else {"id": game_id}
+        return self.parse_data(self._get("games", params, endpoint="game_lookup"))
+
     def search_categories(self, name: str) -> list[dict]:
         categories = []
         cursor = None

@@ -1,0 +1,19 @@
+[Unit]
+Description=Read-only ViralClip Radar operations health
+
+[Service]
+Type=oneshot
+User=viralclip-gta-vi
+Group=viralclip-gta-vi
+WorkingDirectory=/opt/viralclip-ops
+Environment=PYTHON_DOTENV_DISABLED=1
+LoadCredential=alert-url:/etc/viralclip/gta-vi-ops/alert-url
+ExecStartPre=/opt/viralclip-ops/.venv/bin/python -B -m viralclip.operations probe --database /var/lib/viralclip-gta-vi/gta-vi.sqlite3 --backup-dir /var/lib/viralclip-gta-vi/backups
+ExecStart=/opt/viralclip-ops/.venv/bin/python -B -m viralclip.operations monitor --collector-unit viralclip-gta-vi.service --backup-unit viralclip-gta-vi-backup.service --database /var/lib/viralclip-gta-vi/gta-vi.sqlite3 --backup-dir /var/lib/viralclip-gta-vi/backups
+TimeoutStartSec=60s
+Nice=10
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true

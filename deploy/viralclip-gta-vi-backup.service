@@ -1,0 +1,27 @@
+[Unit]
+Description=Verified SQLite backup and encrypted off-server upload
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=viralclip-gta-vi
+Group=viralclip-gta-vi
+WorkingDirectory=/opt/viralclip-ops
+UMask=0077
+EnvironmentFile=/etc/viralclip/gta-vi-ops/backup.env
+Environment=PYTHON_DOTENV_DISABLED=1
+LoadCredential=s3-access-key:/etc/viralclip/gta-vi-ops/s3-access-key
+LoadCredential=s3-secret-key:/etc/viralclip/gta-vi-ops/s3-secret-key
+LoadCredential=restic-password:/etc/viralclip/gta-vi-ops/restic-password
+ExecStartPre=/opt/viralclip-ops/.venv/bin/python -B -m viralclip.operations probe --database /var/lib/viralclip-gta-vi/gta-vi.sqlite3 --backup-dir /var/lib/viralclip-gta-vi/backups --writable-backup
+ExecStart=/opt/viralclip-ops/.venv/bin/python -B -m viralclip.operations backup --database /var/lib/viralclip-gta-vi/gta-vi.sqlite3 --backup-dir /var/lib/viralclip-gta-vi/backups --expected-game-id 1867279146
+TimeoutStartSec=2h15min
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths=/var/lib/viralclip-gta-vi/backups
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true

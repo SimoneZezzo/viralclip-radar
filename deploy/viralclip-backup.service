@@ -1,0 +1,27 @@
+[Unit]
+Description=Verified SQLite backup and encrypted off-server upload
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=viralclip
+Group=viralclip
+WorkingDirectory=/opt/viralclip-ops
+UMask=0077
+EnvironmentFile=/etc/viralclip/ops/backup.env
+Environment=PYTHON_DOTENV_DISABLED=1
+LoadCredential=s3-access-key:/etc/viralclip/ops/s3-access-key
+LoadCredential=s3-secret-key:/etc/viralclip/ops/s3-secret-key
+LoadCredential=restic-password:/etc/viralclip/ops/restic-password
+ExecStartPre=/opt/viralclip-ops/.venv/bin/python -B -m viralclip.operations probe --database /var/lib/viralclip-radar/viralclip.sqlite3 --backup-dir /var/lib/viralclip-radar/backups --writable-backup
+ExecStart=/opt/viralclip-ops/.venv/bin/python -B -m viralclip.operations backup --database /var/lib/viralclip-radar/viralclip.sqlite3 --backup-dir /var/lib/viralclip-radar/backups --expected-game-id 32982
+TimeoutStartSec=2h15min
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=strict
+ReadWritePaths=/var/lib/viralclip-radar/backups
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true

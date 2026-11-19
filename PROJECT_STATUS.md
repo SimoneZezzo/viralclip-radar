@@ -30,7 +30,7 @@ no process was started or stopped. More than 25 hours of observations and real
 | Milestone | Status | Completion evidence / remaining gate |
 | --- | --- | --- |
 | 0: Collector MVP | Complete (GO) | Final post-resumption cohort gate passed on 2026-11-18; 1,323 verified early-to-24h records |
-| 1: Reliable 24/7 service | 1A and 1B complete; 1C prepared offline | Windows supervision and Linux systemd/cutover ready for review. No Linux runtime or cross-host activation verified |
+| 1: Reliable 24/7 service | 1A and 1B complete; operator verified both OVH collectors advancing | CONDITIONAL GO for operations-only rollout. Verified recovery anchors, isolated offsite backups, scheduled monitoring and GTA VI reboot recovery remain live gates. |
 | 2: Features, baselines and labels | 2A and 2B implemented | Dataset builder and chronological evaluation verified; real baseline scores await independent mature days |
 | 3: Machine learning | Not started | Requires validated features/evaluation and sufficient mature labels |
 | 4: Open-source demo/presentation | Not started | Offline synthetic demo and presentation remain; README/config already exist |
@@ -114,10 +114,10 @@ of live operation. Do not mark the overall milestone complete while live gates r
    init-db, a second collector, migrations or reconfiguration as audit steps.
 3. Use the health CLI and JSONL for routine monitoring. Record retry,
    rate-limit and renewal events when they occur naturally.
-4. Review the [Linux deployment and single-writer cutover runbook](docs/LINUX_DEPLOYMENT.md).
-   With separate approval, check Oracle home-region capacity, provision a VM,
-   and verify Ubuntu and systemd behavior on a synthetic database before
-   requesting a production handoff. Windows Task Scheduler remains inactive.
+4. Run only the [read-only rollout inventory](docs/MILESTONE_1_ROLLOUT.md#0-linux-vps--read-only-inventory-and-baseline)
+   next. Verify expected paths and look for any existing automation. The
+   remaining rollout phases require separate approval and begin with fresh,
+   verified recovery copies of both live databases.
 5. Continue collecting at the current volume. Once multiple full UTC creation
    days have matured, predeclare validation and test start dates, keep the
    24h+5m embargo, and score the four baselines on both populations. Review
@@ -132,6 +132,146 @@ For ad hoc read-only SQL audits, use sqlite3 URI `mode=ro` and query_only.
 The legacy status CLI initializes/migrates storage on opening.
 
 ## Evidence log
+
+### 2026-11-19: operator production evidence and Milestone 1 release review
+
+- The operator supplied two read-only VPS samples at about 18:09 and 18:13
+  UTC. The four-minute interval was shorter than the suggested six minutes.
+  Both samples nevertheless show new data, checkpoint advancement, and
+  unchanged, distinct PIDs. reviewer did not run these checks on the VPS.
+
+| Collector | PID | Clips | Observations | Completed discovery | Discovery checkpoint UTC |
+| --- | ---: | ---: | ---: | ---: | --- |
+| GTA V | 25786 | 33,588 → 33,593 | 320,860 → 321,180 | 629 → 630 | 18:04 → 18:09 |
+| GTA VI | 26869 | 20,364 → 20,871 | 64,026 → 66,117 | 32 → 33 | 18:04 → 18:09 |
+
+- Both system services were active and independent of Windows and SSH. GTA V
+  was enabled and GTA VI disabled at boot. Both SQLite integrity checks passed
+  with zero foreign-key or wrong-category records. Discovery and refresh
+  returned HTTP 200. No exhausted jobs or operational errors in the preceding
+  hour were reported. The operator reported two CPU cores, about 35 GB of
+  38 GB disk free and over 3 GB of 3.8 GB RAM available, with low observed use.
+- The expected four operations services and four timers were absent in the
+  operator samples, and local/offsite success markers were missing or invalid.
+  Local backup candidates exist. Alternate automation, current offsite
+  freshness and real restore reliability remain unverified.
+- Local review found the operations backup units pin `32982` and
+  `1867279146` and the restore CLI requires the expected ID. Cross-game
+  rejection, schema v2 and legacy manifest compatibility, read-only source
+  access and independent health reports are covered offline. All 149 tests
+  passed. Ruff, Bash syntax, PowerShell parsing and a source-only package
+  rehearsal passed. Only documentation changed in this review. No VPS access,
+  backup, restore or deployment was performed by reviewer.
+- The [gated rollout](docs/MILESTONE_1_ROLLOUT.md) requires verified off-VPS
+  recovery anchors, separate provider scopes and Restic repository IDs before
+  the first pruning run, and records exact restore, monitor, alert and
+  rollback checks. The rollout keeps both collectors running and updates
+  neither live database. GTA VI boot activation needs separate approval.
+- GTA VI reportedly used ten pages repeatedly and missed a substantial share
+  of 10-minute targets at discovery. The reviewed code has a ten-page cap when
+  a cursor remains, a 900-row saturation flag and a 20-page subdivision
+  budget. The actual saturation and 10-minute missed percentages are unknown.
+  The runbook includes read-only measurements and a separate future coverage
+  study. No collection setting was changed.
+
+### 2026-11-19: dual-collector blockers fixed offline
+
+- Backup and Restic restore commands require an independently supplied game
+  ID. The backup units pin GTA V `32982` and GTA VI `1867279146`. New manifests
+  record the ID. Legacy bundles still verify when the SQLite records establish
+  one matching category. Empty, seed-only, mixed and contradictory identities
+  are rejected. The existing manifest and SQLite integrity checks still run.
+- The runbook's read-only health gate executes both checks under Bash
+  `errexit`, reports the original exit codes and fails if either check is
+  nonzero. The approved rollout gates report each profile's repository,
+  monitor and restore results independently.
+- The original behavior failed five identity cases and nine Bash cases.
+  After the fixes, 24 focused cases and all 149 offline tests passed. Ruff
+  lint/format and Bash syntax passed. The collector, Twitch client and
+  SQLite schema were outside the code changes.
+- Ready for a new read-only production preflight. No SSH, deployment, remote
+  restore or production changes were performed. Live health and unattended
+  sign-off remain open.
+
+### 2026-11-19: read-only dual-collector production audit
+
+- Non-interactive SSH reached VPS authentication but could not log in using
+  the existing identity. The Windows SSH agent was stopped and disabled. No
+  remote command ran. Current DB integrity, TLS/API and scheduler activity,
+  service state, backups and monitoring remain unverified.
+- Reproduced both blockers in the checkout. A self-consistent GTA V-only
+  backup passed the shared manifest verifier without an expected game ID.
+  The actual runbook function under `set -e` skipped GTA VI when GTA V's
+  health check returned 1. Production code was unavailable for comparison.
+- 125 offline tests passed after correcting the temporary-directory setup.
+  Ruff lint and format passed. The
+  [audit report](docs/PRODUCTION_HEALTH_AUDIT.md) records the decision and exact
+  manual commands to collect sanitized systemd, SQLite, HTTP and backup evidence.
+  The helper passed Bash syntax and synthetic SQLite checks for both categories.
+- NO-GO for unattended dual-collector sign-off. Run both read-only samples
+  from an existing authorized SSH terminal. No production state was changed.
+
+### Final dual-collector operations package
+
+- The operator reported both collectors healthy on OVH, verified downloaded
+  manual backups, and GTA VI running without boot enablement. No live
+  verification or production access was performed in this session.
+- Added GTA VI's separate 04:15 UTC backup and five-minute monitor. Both
+  profiles now have an in-unit SQLite mount/WAL probe and recent HTTP error
+  counts. GTA V's backup remains at 03:30 UTC. The
+  [rollout checklist](docs/DUAL_COLLECTOR_OPERATIONS.md) gates timer and GTA VI
+  boot enablement on both restore drills, mount probes and unchanged PIDs.
+- 125 tests passed offline. Live systemd isolation, remote storage, restore,
+  alerts and boot enablement remain operator deployment checks.
+
+### 2026-11-19: GTA VI launch pilot prepared offline
+
+- Authenticated Twitch Helix Get Games by exact name and returned ID verified
+  Grand Theft Auto VI as `1867279146` through the Windows checkout. Two
+  bounded Get Clips requests through the same checkout sampled 15:27–15:37
+  Europe/Rome. The ten-minute first page had 89 clips and a continuation
+  cursor, and the final one-minute window returned none. Saturation beyond
+  the first page and VPS capacity were not measured.
+- Added a separately gated service and environment template with its own
+  account, deployment directory, SQLite, lock and logs, and the existing
+  target schedule. The approved pilot uses 300-second discovery and an initial
+  ten-minute lookback. It needs a dedicated, operator-approved Twitch app.
+  Operations monitoring accepts separate unit names for a future second
+  backup profile. The [pilot runbook](docs/GTA_VI_PILOT.md) records staging,
+  acceptance and stop criteria. No VPS access or second collector activation.
+- 123 tests passed on Windows, including eight pilot cases. Ruff checks,
+  PowerShell/Bash syntax checks and `git diff --check` passed. The Linux
+  service and interference measurements still need an approved pilot.
+
+### 2026-11-19: daily backup and monitoring automation
+
+- The operator reported an enabled OVH Ubuntu 24.04 collector on the expected
+  SQLite path and a stopped Windows collector. The reported DEGRADED state
+  followed cutover-related P95 lateness while jobs advanced. No production
+  system, data or credential access was performed to independently verify it.
+- Added separate daily backup and five-minute monitoring units. The daily
+  job uses the existing online backup and restore verification, makes a
+  standalone SHA-256 manifest, uploads through encrypted restic to a private
+  HTTPS S3-compatible repository, and retains local copies when upload fails.
+  The monitor combines read-only health, systemd, available disk and backup
+  freshness. External heartbeat delivery is optional and sends only severity.
+- All 115 tests passed on Windows, including eight new operations tests.
+  Tested synthetic SQLite with WAL, failure retention, restore, alerts and
+  unit configuration. Ruff and `git diff --check` passed. Bash examples
+  parsed. The VPS units, real S3 upload/restore and heartbeat delivery are
+  pending separate deployment approval.
+
+### 2026-11-19: OVHcloud cutover checklist and storage checkpoint
+
+- Read-only SQLite at 11:55:43 Europe/Rome showed 31,115 clips, 295,640
+  observations, 155,575 jobs (15,444 pending) and one discovery checkpoint.
+  SQLite used WAL with a 152,858,624-byte main file, a 4,231,272-byte WAL
+  and 32,768-byte SHM at inspection. The existing four-process Windows
+  launcher chain was still present with its previous PIDs and start time.
+- Added the [OVHcloud VPS-1 checklist](docs/OVHCLOUD_CUTOVER.md), reusing
+  the existing systemd unit and backup/manifest tools. Seven backup and
+  deployment tests passed. No VPS was contacted and no collector, database,
+  task or credential settings were changed. Native VPS acceptance is unverified.
 
 ### 2026-11-19: Heroku Eco and Essential-0 feasibility
 

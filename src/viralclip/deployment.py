@@ -16,6 +16,10 @@ from viralclip.storage.database import MIGRATIONS
 SCHEMA_VERSION = 2
 
 
+class BackupIdentityError(ValueError):
+    """The backed-up category could not be verified against the approved ID."""
+
+
 def _open_read_only(database: Path) -> sqlite3.Connection:
     return sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
 
@@ -47,7 +51,36 @@ def preflight(database: Path) -> None:
         reader.execute("SELECT snapshot_id FROM jobs LIMIT 1").fetchone()
 
 
-def snapshot_manifest(database: Path) -> dict[str, object]:
+def _check_game_identity(reader: sqlite3.Connection, expected_game_id: str) -> None:
+    if not expected_game_id or expected_game_id != expected_game_id.strip():
+        raise BackupIdentityError("A nonempty expected game ID is required")
+    games = reader.execute("SELECT game_id FROM games LIMIT 2").fetchall()
+    if len(games) != 1:
+        raise BackupIdentityError("Backup database must contain exactly one game ID")
+    if games[0][0] != expected_game_id:
+        raise BackupIdentityError("Backup database does not contain the expected game ID")
+    for table in ("clips", "collection_runs", "discovery_checkpoints"):
+        if reader.execute(
+            f"SELECT 1 FROM {table} WHERE game_id IS NOT ? LIMIT 1", (expected_game_id,)
+        ).fetchone():
+            raise BackupIdentityError(
+                "Backup database contains category records outside the expected game ID"
+            )
+    has_evidence = reader.execute(
+        """
+        SELECT EXISTS (SELECT 1 FROM clips) OR EXISTS (
+            SELECT 1 FROM collection_runs WHERE status = 'completed' AND finished_at IS NOT NULL
+            AND potentially_truncated = 0 AND error_summary IS NULL AND pages_seen > 0
+        )
+        """
+    ).fetchone()[0]
+    if not has_evidence:
+        raise BackupIdentityError(
+            "Backup database has no clips or successful discovery to verify its game ID"
+        )
+
+
+def snapshot_manifest(database: Path, *, expected_game_id: str | None = None) -> dict[str, object]:
     database = database.resolve()
     if any(
         database.with_name(database.name + suffix).exists()
@@ -60,6 +93,8 @@ def snapshot_manifest(database: Path) -> dict[str, object]:
         if reader.execute("PRAGMA journal_mode").fetchone()[0] != "delete":
             raise ValueError("Use a standalone SQLite online backup in DELETE journal mode")
         _check_schema(reader)
+        if expected_game_id is not None:
+            _check_game_identity(reader, expected_game_id)
         outstanding = reader.execute(
             """
             SELECT status, target_age_seconds, COUNT(*), MIN(due_at), MAX(due_at)
@@ -70,7 +105,7 @@ def snapshot_manifest(database: Path) -> dict[str, object]:
     metrics = validate(database)
     with database.open("rb") as stream:
         digest = file_digest(stream, "sha256").hexdigest()
-    return {
+    manifest: dict[str, object] = {
         "manifest_version": 1,
         "sha256": digest,
         "bytes": database.stat().st_size,
@@ -86,11 +121,38 @@ def snapshot_manifest(database: Path) -> dict[str, object]:
             for state, target, count, earliest, latest in outstanding
         ],
     }
+    if expected_game_id is not None:
+        manifest.update(manifest_version=2, game_id=expected_game_id)
+    return manifest
 
 
-def verify_snapshot(database: Path, manifest_path: Path) -> None:
-    expected = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if snapshot_manifest(database) != expected:
+def _unique_manifest_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    fields = dict(pairs)
+    if len(fields) != len(pairs):
+        raise ValueError("Backup manifest contains duplicate keys")
+    return fields
+
+
+def verify_snapshot(
+    database: Path, manifest_path: Path, *, expected_game_id: str | None = None
+) -> None:
+    expected = json.loads(
+        manifest_path.read_text(encoding="utf-8"), object_pairs_hook=_unique_manifest_fields
+    )
+    version = expected.get("manifest_version") if isinstance(expected, dict) else None
+    if type(version) is not int or version not in (1, 2):
+        raise ValueError("Unknown or missing backup manifest version")
+    if version == 2 and (not expected_game_id or expected.get("game_id") != expected_game_id):
+        raise BackupIdentityError(
+            "Backup manifest game ID must match an independently supplied expected game ID"
+        )
+
+    actual = snapshot_manifest(database, expected_game_id=expected_game_id)
+    if version == 1 and expected_game_id is not None:
+        # Legacy bundles carry their identity in SQLite. Keep the original manifest contract.
+        actual["manifest_version"] = 1
+        del actual["game_id"]
+    if json.dumps(actual, sort_keys=True) != json.dumps(expected, sort_keys=True):
         raise ValueError(
             "Transfer SHA-256, size, or database metrics differ from the source manifest"
         )
@@ -102,6 +164,8 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("preflight", "manifest", "verify"):
         command = commands.add_parser(name)
         command.add_argument("database", type=Path)
+        if name in ("manifest", "verify"):
+            command.add_argument("--expected-game-id", help="approved category ID for this backup")
         if name == "verify":
             command.add_argument("expected_manifest", type=Path)
     args = parser.parse_args(argv)
@@ -110,9 +174,12 @@ def main(argv: list[str] | None = None) -> int:
             preflight(args.database)
             print("Collector settings and existing database passed read-only preflight.")
         elif args.command == "manifest":
-            print(json.dumps(snapshot_manifest(args.database), indent=2, sort_keys=True))
+            manifest = snapshot_manifest(args.database, expected_game_id=args.expected_game_id)
+            print(json.dumps(manifest, indent=2, sort_keys=True))
         else:
-            verify_snapshot(args.database, args.expected_manifest)
+            verify_snapshot(
+                args.database, args.expected_manifest, expected_game_id=args.expected_game_id
+            )
             print(
                 "Transfer matches the source manifest and passes integrity and relationship checks."
             )
