@@ -1,6 +1,6 @@
 # Milestone 1 operations rollout for GTA V and GTA VI
 
-**CONDITIONAL GO for an operations-only rollout.** The operator's 2026-11-19 samples show both collectors advancing and both databases passing integrity and category checks. The release passes local tests. Production acceptance depends on the gates below and separate authorization for phases 1–8. The rollback in phase 9 is for this first installation. Keep a single Linux shell for the authorized phases and record the outputs privately.
+**CONDITIONAL GO for an operations-only rollout.** In the operator's 2026-11-19 samples, both collectors advanced and both databases passed integrity and category checks. The current VPS state and installed revision are **UNKNOWN**. Production acceptance depends on the gates below and separate authorization for phases 1–8. The rollback in phase 9 is for this first installation. Keep a single Linux shell for the authorized phases and record the outputs privately.
 
 ## Local release review
 
@@ -11,7 +11,7 @@
 | Offsite isolation | Restic selectors are shared across profiles for compatibility with legacy bundles. Distinct provider scopes and repository IDs are mandatory before backups can prune. Restore rejects cross-game bundles even when storage is configured incorrectly. |
 | Credentials | The archive file types are checked locally. Production secrets stay in root-owned profile files and the jobs obtain them through `LoadCredential`. The heartbeat path also uses its profile's own credential. |
 
-The local review found no new critical code defect in the scoped operations path. Linux mount enforcement, live service configuration, repository ownership and actual alert delivery remain acceptance gates.
+The local source baseline `8fefbf957c3c81712d6c0cbdb26b4118fd3bd75f` includes the restore category guard and the preflight that reports both health results. The [project tracker](../PROJECT_STATUS.md) records the offline evidence. Linux mount enforcement, live service configuration, repository ownership and actual alert delivery remain acceptance gates.
 
 ## 0. LINUX VPS — read-only inventory and baseline
 
@@ -140,11 +140,11 @@ If either existing module, path, mount, or check fails, stop this phase. The liv
 
 ## 2. WINDOWS POWERSHELL — authorized transfer, verify both anchors and package the release
 
-Run from the reviewed repository root. Use the private, access-restricted, encrypted Windows storage used for operational data before copying the closed artifacts into ignored `data/`. The SSH key authenticates through the local terminal. The closed artifacts contain Twitch metadata and remain private.
+Run from the reviewed repository root. Use the private, access-restricted, encrypted Windows storage used for operational data before copying the closed artifacts into ignored `data/`. Set the host and identity placeholders from the operator's approved private configuration. The SSH key authenticates through the local terminal. The closed artifacts contain Twitch metadata and remain private.
 
 ```powershell
-$vps = 'ubuntu@vps.example.invalid'
-$identity = "$env:USERPROFILE\.ssh\viralclip_ovh_ed25519"
+$vps = 'ubuntu@REPLACE_WITH_APPROVED_VPS'
+$identity = "$env:USERPROFILE\.ssh\REPLACE_WITH_APPROVED_IDENTITY"
 $anchorId = Read-Host 'Paste the anchor directory basename printed on Linux'
 if ($anchorId -notmatch '^anchor-\d{8}T\d{6}Z\.[a-zA-Z0-9]+$') { throw 'Unexpected anchor basename' }
 $anchorCopy = "data/$anchorId"
@@ -166,29 +166,65 @@ foreach ($file in @("$anchorCopy/gta-v/manifest.json", "$anchorCopy/gta-vi/manif
 }
 ```
 
-**WINDOWS POWERSHELL — local packaging, then authorized source-only upload.** The working tree includes reviewed untracked operations files. Package the file list explicitly. Review it before uploading, record the archive SHA-256, and retain the archive as the operations release record.
+### Package a reviewed Git revision
+
+From the repository root in Windows PowerShell, enter the full commit hash
+that was reviewed and tested. The archive reads the approved files from that
+commit's Git tree. Review the inventory and record the full revision, archive
+basename and SHA-256 before any separately authorized upload.
 
 ```powershell
-$releaseFiles = @(git ls-files --cached --others --exclude-standard -- src tests deploy | Sort-Object -Unique)
-if ($LASTEXITCODE -ne 0 -or -not $releaseFiles.Count) { throw 'Could not enumerate source' }
-$unexpected = @($releaseFiles | Where-Object { $_ -cnotmatch '^(src/viralclip|tests)/[a-z0-9_/]+\.py$|^deploy/[a-z0-9-]+\.(service|timer|sh|env\.example)$' })
-if ($unexpected.Count) { throw "Unexpected release files: $($unexpected -join ', ')" }
-$inputs = @('pyproject.toml', 'uv.lock', '.python-version', 'README.md') + $releaseFiles
-foreach ($item in $inputs) {
-    $inputFile = Get-Item -LiteralPath $item -ErrorAction Stop
-    if ($inputFile.PSIsContainer -or ($inputFile.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Unsafe source path: $item" }
+$requested = Read-Host 'Full reviewed Git commit hash'
+if ($requested -cnotmatch '^[a-f0-9]{40}$') { throw 'Enter a full lowercase commit hash' }
+$rev = git rev-parse --verify "${requested}^{commit}"
+if ($LASTEXITCODE -ne 0 -or $rev -cne $requested) { throw 'Reviewed commit is unavailable' }
+
+$rootFiles = @('pyproject.toml', 'uv.lock', '.python-version', 'README.md')
+$entries = @(git ls-tree -r --full-tree $rev -- @rootFiles src tests deploy)
+if ($LASTEXITCODE -ne 0 -or -not $entries.Count) { throw 'Could not enumerate reviewed source' }
+$inputs = @(foreach ($entry in $entries) {
+    if ($entry -cnotmatch '^100(?:644|755) blob [a-f0-9]{40}\t(.+)$') { throw 'Release inputs must be regular Git blobs' }
+    $path = $Matches[1]
+    if ($path -cnotin $rootFiles -and $path -cnotmatch '^(src/viralclip|tests)/[a-z0-9_/]+\.py$|^deploy/[a-z0-9-]+\.(service|timer|sh|env\.example)$') {
+        throw "Unexpected release path: $path"
+    }
+    $path
+})
+$required = $rootFiles + @('src/viralclip/operations.py', 'src/viralclip/gta_vi.py', 'deploy/dual-collector-health.sh')
+foreach ($path in $required) {
+    if ($path -cnotin $inputs) { throw "Missing required release path: $path" }
 }
-$rev = (git rev-parse --short HEAD).Trim()
+$directories = @(foreach ($path in $inputs) {
+    for ($i = $path.IndexOf('/'); $i -ge 0; $i = $path.IndexOf('/', $i + 1)) {
+        $path.Substring(0, $i + 1)
+    }
+})
+$expectedMembers = $inputs + @($directories | Sort-Object -Unique)
+
 $archiveName = "ops-$rev-$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')).tar.gz"
 $archive = "data/$archiveName"
+git check-ignore --quiet --no-index -- $archive
+if ($LASTEXITCODE -ne 0) { throw 'Archive destination must be ignored' }
+if (-not (Test-Path -LiteralPath data)) { New-Item -ItemType Directory -Path data -ErrorAction Stop | Out-Null }
+$archiveDir = Get-Item -LiteralPath data -Force -ErrorAction Stop
+if (-not $archiveDir.PSIsContainer -or ($archiveDir.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Archive destination must be a regular directory'
+}
 if (Test-Path -LiteralPath $archive) { throw 'Archive name already in use' }
-tar.exe -czf $archive @inputs
+git archive --format=tar.gz --output=$archive $rev -- @inputs
 if ($LASTEXITCODE -ne 0) { throw 'Release archive creation failed' }
 $members = @(tar.exe -tzf $archive)
-if ($LASTEXITCODE -ne 0 -or (Compare-Object ($inputs | Sort-Object) ($members | Sort-Object))) { throw 'Archive inventory differs from reviewed inputs' }
+if ($LASTEXITCODE -ne 0) { throw 'Could not read archive inventory' }
+if (Compare-Object $expectedMembers $members -CaseSensitive) { throw 'Archive inventory differs from reviewed tree' }
+"Reviewed Git commit: $rev"
 $members
-Get-FileHash -Algorithm SHA256 -LiteralPath $archive
+Get-FileHash -Algorithm SHA256 -LiteralPath $archive -ErrorAction Stop
 ```
+
+### Upload the reviewed archive
+
+After transfer approval, use the privately verified host and identity
+variables from the anchor transfer above.
 
 ```powershell
 scp -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i $identity $archive "${vps}:viralclip-stage/"
@@ -202,7 +238,7 @@ Use two approved dedicated offsite S3 repositories. Verify actual bucket and pre
 ```bash
 read -r -p 'Reviewed archive basename: ' archive_name
 read -r -p 'Recorded archive SHA-256: ' expected
-[[ $archive_name =~ ^ops-[a-f0-9]+-[0-9]{8}T[0-9]{6}Z\.tar\.gz$ && $expected =~ ^[A-Fa-f0-9]{64}$ ]]
+[[ $archive_name =~ ^ops-[a-f0-9]{40}-[0-9]{8}T[0-9]{6}Z\.tar\.gz$ && $expected =~ ^[A-Fa-f0-9]{64}$ ]]
 archive="$stage/$archive_name"
 printf '%s  %s\n' "${expected,,}" "$archive" | sha256sum -c -
 for profile in ops gta-vi-ops; do

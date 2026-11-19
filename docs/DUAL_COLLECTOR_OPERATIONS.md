@@ -41,21 +41,18 @@ evidence before any approved rollout.
 
 ## 1. Windows PowerShell — package the reviewed source
 
-Run from the repository root. This archive includes reviewed working-tree
-files, including new files absent from HEAD. Inspect the listing before upload.
+Run [the shared packaging procedure](MILESTONE_1_ROLLOUT.md#package-a-reviewed-git-revision)
+from the repository root. It selects files from the exact reviewed commit,
+checks the archive inventory and prints its SHA-256. Keep the PowerShell shell
+with `$archive` set, and supply the host and identity from the operator's
+approved private configuration before the authorized transfer.
 
 ```powershell
-$Vps = 'ubuntu@REPLACE_WITH_OVH_ADDRESS'
-$rev = (git rev-parse --short HEAD).Trim()
-$tag = "ops-$rev-$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))"
-$archive = "data/$tag.tar.gz"
-tar.exe --exclude=__pycache__ --exclude='*.pyc' -czf $archive pyproject.toml uv.lock .python-version README.md src tests deploy
-if ($LASTEXITCODE -ne 0) { throw 'Source archive failed' }
-tar.exe -tzf $archive
-Get-FileHash -Algorithm SHA256 -LiteralPath $archive
-ssh $Vps 'umask 077; mkdir -p ~/viralclip-stage; chmod 700 ~/viralclip-stage'
+$vps = 'ubuntu@REPLACE_WITH_APPROVED_VPS'
+$identity = "$env:USERPROFILE\.ssh\REPLACE_WITH_APPROVED_IDENTITY"
+ssh -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i $identity $vps 'umask 077; mkdir -p ~/viralclip-stage; chmod 700 ~/viralclip-stage'
 if ($LASTEXITCODE -ne 0) { throw 'SSH staging failed' }
-scp $archive "${Vps}:viralclip-stage/"
+scp -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i $identity $archive "${vps}:viralclip-stage/"
 if ($LASTEXITCODE -ne 0) { throw 'Upload failed' }
 [IO.Path]::GetFileName($archive)
 ```

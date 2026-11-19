@@ -9,6 +9,12 @@ Update this file after meaningful work, recording actual results rather than int
 
 ## Current position
 
+**Local source baseline:** `master` at
+`8fefbf957c3c81712d6c0cbdb26b4118fd3bd75f` contains all 29 paths previously
+pending for dual-collector development. Git hardening is tracked on
+`chore/git-baseline-hardening`. The baseline records the offline source and
+tests. The installed revision and current VPS state are **UNKNOWN**.
+
 **Milestone 0: COMPLETE (GO) as of 2026-11-18 21:07 Europe/Rome.**
 The final live audit verified 1,323 clips created after measurements resumed
 with an actual first-hour observation and a correctly linked 24-hour outcome.
@@ -75,9 +81,8 @@ of live operation. Do not mark the overall milestone complete while live gates r
   category failures. See the audit for severity and test details.
 - Several overdue jobs can link to one current observation after restart. Their
   target ages remain on jobs; the observation retains its actual age/time.
-- No ML, UI, paid infrastructure, publishing, system settings changes or git push
-  were performed. The audit changes were uncommitted when this handoff was written;
-  inspect `git status` and preserve existing work before making changes.
+- Use the recorded Git baseline to identify the reviewed source. Inspect
+  `git status` and preserve existing work before making changes.
 
 ## Known limits / open verification
 
@@ -132,6 +137,21 @@ For ad hoc read-only SQL audits, use sqlite3 URI `mode=ro` and query_only.
 The legacy status CLI initializes/migrates storage on opening.
 
 ## Evidence log
+
+### 2026-11-19: P0 Git baseline hardening
+
+- Compared the previous source commit with `8fefbf9` and verified that all four
+  modified and 25 new paths from the earlier inventory are in the baseline.
+  The working tree and staging area were clean before P0.
+- The hardening branch keeps local configuration, common credential formats,
+  databases and operational output out of Git. The first commit passed 42
+  ignore cases and 12 retained-path cases. It pins LF for Bash scripts and
+  Linux deploy artifacts.
+- The [release runbook](docs/MILESTONE_1_ROLLOUT.md#package-a-reviewed-git-revision)
+  defines a source-only archive from a reviewed full Git commit with path,
+  inventory and SHA-256 checks. Existing anchor manifest and integrity gates
+  still apply. A local rehearsal against the protection commit passed the
+  runbook inventory and SHA-256 checks.
 
 ### 2026-11-19: operator production evidence and Milestone 1 release review
 
