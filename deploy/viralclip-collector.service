@@ -1,0 +1,40 @@
+[Unit]
+Description=ViralClip Radar Twitch collector
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/viralclip/production-authorized
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=viralclip
+Group=viralclip
+WorkingDirectory=/opt/viralclip-radar
+StateDirectory=viralclip-radar
+StateDirectoryMode=0700
+UMask=0077
+EnvironmentFile=/etc/viralclip/collector.env
+Environment=PYTHON_DOTENV_DISABLED=1
+ExecStartPre=/opt/viralclip-radar/.venv/bin/python -B -m viralclip.deployment preflight /var/lib/viralclip-radar/viralclip.sqlite3
+ExecStart=/opt/viralclip-radar/.venv/bin/python -Bu -m viralclip --db /var/lib/viralclip-radar/viralclip.sqlite3 collect --game "Grand Theft Auto V" --loop
+Restart=on-failure
+RestartSec=15s
+KillSignal=SIGINT
+TimeoutStopSec=120s
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=200
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

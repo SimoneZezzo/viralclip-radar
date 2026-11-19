@@ -16,6 +16,7 @@ class Settings:
     discovery_lookback_minutes: int
     games: tuple[str, ...]
     game_ids: tuple[str, ...]
+    http_log_directory: str | None = None
 
     @property
     def has_twitch_credentials(self) -> bool:
@@ -49,4 +50,5 @@ def load_settings() -> Settings:
         discovery_lookback_minutes=_positive_int("DISCOVERY_LOOKBACK_MINUTES", 30),
         games=_csv_values("VIRALCLIP_GAMES"),
         game_ids=_csv_values("VIRALCLIP_GAME_IDS"),
+        http_log_directory=os.getenv("VIRALCLIP_HTTP_LOG_DIR") or None,
     )

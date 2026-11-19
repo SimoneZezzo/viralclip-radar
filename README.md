@@ -52,6 +52,89 @@ The SQLite database defaults to `data/viralclip.sqlite3`; override it with
 `VIRALCLIP_DB_PATH` or the global `--db` option. SQLite uses WAL, foreign keys,
 versioned migrations, append-only snapshots, and persistent per-clip jobs.
 
+## Collector health
+
+From a second terminal, run:
+
+```powershell
+uv run viralclip health
+uv run viralclip --db "path/to/collector.sqlite3" health
+```
+
+Health uses a consistent read-only SQLite transaction, sees committed WAL data,
+and requires no Twitch credentials. It creates no database and runs no migrations.
+The report uses UTC and evaluates all categories stored in the database, so a
+stale category can affect the result even when another category is current.
+
+| Status | Exit code | Rule |
+| --- | --- | --- |
+| HEALTHY | 0 | No investigation thresholds triggered |
+| DEGRADED | 1 | A category has no successful discovery or checkpoint yet, discovery or a checkpoint is older than the larger of 10 minutes or two discovery intervals, a job is overdue by more than 5 minutes, a failure awaits retry, a target's recent P95 lateness exceeds 5 minutes, or recent discovery/operational errors or incomplete windows beyond the checkpoint are present |
+| CRITICAL | 2 | Discovery or a checkpoint is older than the larger of 30 minutes or six intervals, a job is overdue by more than 15 minutes, a job has exhausted its three attempts, or the database or required records cannot be read |
+
+Counts and strict early coverage are cumulative. Overdue jobs are due
+pending, running, or failed jobs. Missed-at-discovery and unavailable outcomes
+remain separate and do not independently trigger alerts. A clip has early coverage
+when it has any actual observation at or before its 10m, 30m, or 60m deadline,
+among clips with that target already due. For example, a scheduled 60m
+measurement that arrives one second late contributes to lateness and cannot
+count for strict 60m coverage.
+
+Discovery run counts, operational errors, and scheduled lateness use the last
+hour. Lateness compares each completed job's linked observation time with its
+due time and uses nearest-rank P95. A truncated parent window still appears in
+the report when subdivision advances the checkpoint past it. Completed windows
+describe recorded API searches. Actual coverage across Twitch is unknown.
+The latest five recent error entries include timestamps, row IDs, and coarse
+categories. Raw error messages are omitted.
+
+## Twitch HTTP telemetry
+
+An updated `collect` process writes UTF-8 JSON Lines next to its database.
+The default path is `data/viralclip.sqlite3.http.jsonl`. The name follows the
+database filename, including when using `--db`. Set `VIRALCLIP_HTTP_LOG_DIR`
+in the environment or `.env` to choose another directory, or set it to
+`off` to disable file logging. Use separate output paths for collectors with
+the same database filename. Each log has one writer.
+
+The file opens on the first event. It rotates at approximately 5 MiB and
+retains three backups (`.1` newest through `.3` oldest), for roughly 20 MiB
+per collector. Write and rotation errors are ignored so collection can proceed.
+Use local storage because writes are synchronous. Existing collector processes
+keep their current behavior. Live telemetry begins when an updated collector
+starts collecting in a separately planned deployment.
+
+- `http_request` records each attempt's coarse endpoint, status, monotonic
+  duration in milliseconds, and outcome, including timeouts, network errors and
+  HTTP 429. When present and valid, numeric rate-limit remaining and reset
+  epoch fields are included. Malformed values are omitted and identified by
+  field name.
+- `http_retry` records the next attempt and its reason. `rate_limit_wait`
+  records the planned sleep for a 429 retry or an exhausted bucket. Sum
+  `delay_seconds` from wait events alone to avoid double-counting retry delays.
+- `oauth_refresh` records attempts, successes and failures for initial token
+  acquisition, expiry-based renewal and renewal after a 401. The HTTP token
+  validation endpoint is recorded separately.
+
+Inspect the latest rate-limit pressure in PowerShell:
+
+```powershell
+Get-Content data/viralclip.sqlite3.http.jsonl -Tail 1000 |
+    ConvertFrom-Json |
+    Where-Object { $_.event -eq 'rate_limit_wait' -or $_.status -eq 429 -or $_.rate_limit_remaining -eq 0 }
+```
+
+Logs omit credentials, headers other than the two parsed numeric rate-limit
+fields, URLs, query parameters, request and response bodies, and exception text.
+The SQLite health command continues to report stored collector health independently.
+
+For a repeatable online backup, temporary restore drill and supervised
+activation checklist, see the [Windows rollout guide](docs/HTTP_TELEMETRY_ROLLOUT.md).
+For offline preparation of boot startup, crash recovery and operator controls,
+see the [Windows supervision runbook](docs/WINDOWS_SUPERVISION.md).
+For staged Oracle ARM64 or generic x86-64 setup and the single-writer
+handoff, see the [Linux deployment runbook](docs/LINUX_DEPLOYMENT.md).
+
 ## What the observations mean
 
 Discovery records the clip's current view count with its actual fetch time.
@@ -79,25 +162,34 @@ The API and application access remain subject to Twitch rate limits and terms.
 This project stores operational clip metadata locally; review applicable Twitch
 terms before redistributing collected data or derived datasets.
 
+## Point-in-time dataset
+
+Use `uv run viralclip dataset --help` to build local, read-only extracts at
+30, 35, 60 and 65 minutes with linked 24-hour outcomes. See the
+[dataset guide](docs/POINT_IN_TIME_DATASET.md) for the audit files, selection
+rules, and reproducible PowerShell examples.
+
+Use `uv run viralclip evaluate --help` to compare chronological ranking
+baselines from local dataset artifacts. See the
+[evaluation guide](docs/CHRONOLOGICAL_EVALUATION.md) for split maturity,
+matched cohorts, metrics and the insufficient-data behavior.
+
 ## Milestone and project progress
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the maintained milestone checklist,
-saved session context, verification evidence, blockers and next steps. Milestone 0
-as a whole remains **in progress** until real collection is verified.
+saved session context, verification evidence, blockers and next steps.
 
 - [x] **Milestone 0 — Collector MVP:** CLI, Twitch OAuth/Helix client, SQLite
   migrations, discovery, persistent snapshot jobs, retry/rate-limit handling,
   and mocked tests are implemented. The independent audit's 48-test suite and
   Ruff checks pass; see [the audit report](docs/MILESTONE_0_AUDIT.md).
-- [ ] **Milestone 0 — Live collection verification:** pending Twitch credentials.
-  No live Twitch request or continuous collection has been run yet.
-- [ ] **Milestone 1 — 24/7 operations:** not started.
-- [ ] **Milestone 2 — Features and baselines:** not started.
+- [x] **Milestone 0 — Live acceptance:** passed, including the prospective
+  post-restart cohort through 24 hours.
+- [ ] **Milestone 1 — 24/7 operations:** health, backup and restore, and live
+  telemetry verified. Windows and Linux supervision are prepared offline
+  and await controlled activation.
+- [ ] **Milestone 2 — Features and baselines:** point-in-time builder and
+  chronological evaluation harness verified. More mature days are needed
+  for real out-of-time scores.
 - [ ] **Milestone 3 — Machine learning:** not started.
 - [ ] **Milestone 4 — Demo and presentation:** not started.
-
-**Next step:** configure `TWITCH_CLIENT_ID` and `TWITCH_CLIENT_SECRET` in `.env`,
-run `uv run viralclip collect --game "Grand Theft Auto V" --once`, inspect
-`uv run viralclip status`, and then start `uv run viralclip collect --loop`.
-Live behavior and data collection remain unverified until this is done with
-user-provided credentials.
