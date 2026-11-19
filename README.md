@@ -30,6 +30,27 @@ does not return an exact category match, collection stops with an error; it
 never substitutes another GTA category. You can instead provide category IDs
 using `VIRALCLIP_GAME_IDS` or repeated `--game-id ID` options.
 
+## Offline verification
+
+From a Git checkout, install the locked development dependencies once, then
+run the same verifier used by CI on Windows and Ubuntu.
+
+```text
+uv sync --locked
+uv run --offline --no-sync python -B scripts/verify_offline.py --strict
+```
+
+The verifier uses synthetic fixtures and disables dotenv. It reports pytest
+counts, Ruff, Git whitespace, Bash syntax, PowerShell parsing and a verified
+source archive of the committed `HEAD`. Each check reports `PASS`, `FAIL`,
+`SKIP` or `UNKNOWN`. Exit `1` means a failed check. Exit `2` means an unknown
+result or a skip in strict mode. Omit `--strict` to allow reported skips when
+an optional interpreter is unavailable. On Windows, Git for Windows supplies
+Bash. On Ubuntu, install PowerShell to run its parser locally.
+
+The release command and its inventory checks are documented in the
+[operations runbook](docs/MILESTONE_1_ROLLOUT.md#package-a-reviewed-git-revision).
+
 ## Continuous collection
 
 Set `VIRALCLIP_GAMES` and optionally `VIRALCLIP_GAME_IDS` in `.env`, then run:

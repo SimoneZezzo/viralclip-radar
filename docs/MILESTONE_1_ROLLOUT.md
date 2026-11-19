@@ -169,56 +169,27 @@ foreach ($file in @("$anchorCopy/gta-v/manifest.json", "$anchorCopy/gta-vi/manif
 ### Package a reviewed Git revision
 
 From the repository root in Windows PowerShell, enter the full commit hash
-that was reviewed and tested. The archive reads the approved files from that
-commit's Git tree. Review the inventory and record the full revision, archive
-basename and SHA-256 before any separately authorized upload.
+that was reviewed and tested. The packager reads the raw Git blobs under the
+release allowlist and checks the archive inventory, file bytes, Linux line
+endings and embedded commit before writing it. Record the full revision,
+archive basename and SHA-256 before any separately authorized upload.
 
 ```powershell
-$requested = Read-Host 'Full reviewed Git commit hash'
-if ($requested -cnotmatch '^[a-f0-9]{40}$') { throw 'Enter a full lowercase commit hash' }
-$rev = git rev-parse --verify "${requested}^{commit}"
-if ($LASTEXITCODE -ne 0 -or $rev -cne $requested) { throw 'Reviewed commit is unavailable' }
-
-$rootFiles = @('pyproject.toml', 'uv.lock', '.python-version', 'README.md')
-$entries = @(git ls-tree -r --full-tree $rev -- @rootFiles src tests deploy)
-if ($LASTEXITCODE -ne 0 -or -not $entries.Count) { throw 'Could not enumerate reviewed source' }
-$inputs = @(foreach ($entry in $entries) {
-    if ($entry -cnotmatch '^100(?:644|755) blob [a-f0-9]{40}\t(.+)$') { throw 'Release inputs must be regular Git blobs' }
-    $path = $Matches[1]
-    if ($path -cnotin $rootFiles -and $path -cnotmatch '^(src/viralclip|tests)/[a-z0-9_/]+\.py$|^deploy/[a-z0-9-]+\.(service|timer|sh|env\.example)$') {
-        throw "Unexpected release path: $path"
-    }
-    $path
-})
-$required = $rootFiles + @('src/viralclip/operations.py', 'src/viralclip/gta_vi.py', 'deploy/dual-collector-health.sh')
-foreach ($path in $required) {
-    if ($path -cnotin $inputs) { throw "Missing required release path: $path" }
-}
-$directories = @(foreach ($path in $inputs) {
-    for ($i = $path.IndexOf('/'); $i -ge 0; $i = $path.IndexOf('/', $i + 1)) {
-        $path.Substring(0, $i + 1)
-    }
-})
-$expectedMembers = $inputs + @($directories | Sort-Object -Unique)
-
+$rev = Read-Host 'Full reviewed Git commit hash'
+if ($rev -cnotmatch '^[a-f0-9]{40}$') { throw 'Enter a full lowercase commit hash' }
 $archiveName = "ops-$rev-$((Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')).tar.gz"
 $archive = "data/$archiveName"
 git check-ignore --quiet --no-index -- $archive
 if ($LASTEXITCODE -ne 0) { throw 'Archive destination must be ignored' }
-if (-not (Test-Path -LiteralPath data)) { New-Item -ItemType Directory -Path data -ErrorAction Stop | Out-Null }
+if (-not (Test-Path -LiteralPath data)) {
+    New-Item -ItemType Directory -Path data -ErrorAction Stop | Out-Null
+}
 $archiveDir = Get-Item -LiteralPath data -Force -ErrorAction Stop
 if (-not $archiveDir.PSIsContainer -or ($archiveDir.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
     throw 'Archive destination must be a regular directory'
 }
-if (Test-Path -LiteralPath $archive) { throw 'Archive name already in use' }
-git archive --format=tar.gz --output=$archive $rev -- @inputs
+uv run --offline --no-sync python -B scripts/package_release.py $rev --output $archive
 if ($LASTEXITCODE -ne 0) { throw 'Release archive creation failed' }
-$members = @(tar.exe -tzf $archive)
-if ($LASTEXITCODE -ne 0) { throw 'Could not read archive inventory' }
-if (Compare-Object $expectedMembers $members -CaseSensitive) { throw 'Archive inventory differs from reviewed tree' }
-"Reviewed Git commit: $rev"
-$members
-Get-FileHash -Algorithm SHA256 -LiteralPath $archive -ErrorAction Stop
 ```
 
 ### Upload the reviewed archive

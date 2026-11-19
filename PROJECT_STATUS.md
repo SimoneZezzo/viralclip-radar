@@ -138,6 +138,20 @@ The legacy status CLI initializes/migrates storage on opening.
 
 ## Evidence log
 
+### 2026-11-19: P1 offline verification and reproducible packaging
+
+- Added one [offline verification command](README.md#offline-verification)
+  for Windows development and a Windows and Ubuntu CI candidate. The command
+  disables dotenv, uses synthetic test data and gives each check an explicit
+  result. CI uses strict mode, read-only repository permissions and no secrets.
+- Windows development verification passed all seven checks, including the
+  full suite with 159 passes, no failures and no skips. The new tests cover
+  opposite Git EOL and mode settings, a dirty checkout, an older selected
+  commit, unsafe inputs and corrupted archives. Ubuntu execution is UNKNOWN.
+- Release packaging reads raw blobs from the selected commit. It verifies
+  archive contents and integrity before writing the file and preserves the
+  rollout's backup manifest and SHA-256 gates.
+
 ### 2026-11-19: P0 Git baseline hardening
 
 - Compared the previous source commit with `8fefbf9` and verified that all four
