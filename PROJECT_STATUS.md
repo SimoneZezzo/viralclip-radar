@@ -4,19 +4,30 @@ Last updated: 2026-11-19 (Europe/Rome).
 
 ## Current priority
 
-Resume **Milestone 1** once the local workflow work is complete. The latest
-recorded operator samples showed GTA V and GTA VI advancing on OVH with distinct
-PIDs and successful SQLite integrity and category checks. GTA V was enabled at
-boot and GTA VI was reported disabled. The installed revision and current VPS,
-backup, monitoring and recovery state are **UNKNOWN**.
+Resume **Milestone 1** at phase 0. In the operator's two 2026-11-19 samples,
+about four minutes apart, GTA V and GTA VI advanced on OVH with distinct PIDs
+and passed SQLite integrity and category checks. GTA V was enabled at boot
+and GTA VI was reported disabled. The expected operations units and timers
+were absent in those samples. Current production state is **UNKNOWN**.
 [Operator samples](docs/PROJECT_HISTORY.md#2026-11-19-operator-production-evidence-and-milestone-1-release-review)
 
-The next production step, with explicit authorization, is the
+**Next task.** Obtain explicit authorization for phase 0 VPS access and run the
 [read-only rollout inventory](docs/MILESTONE_1_ROLLOUT.md#0-linux-vps--read-only-inventory-and-baseline).
-Preserve both active collectors. The operations-only rollout remains conditional
-on verified off-VPS recovery anchors for both games, independent backup profiles
-and isolated restores, monitoring and alert evidence, and a separate decision
-and verification for GTA VI reboot recovery.
+Inventory the expected and alternate backup and monitor schedules. Take two
+timestamped UTC samples at least six minutes apart. For each collector,
+record the health verdict, service PID, DB device/inode, category and integrity
+checks, discovery watermarks and job progress. Record disk and RAM headroom.
+Phase 0 is complete when both samples and the inventory are recorded, with
+any failures or gaps identified. Hold the rollout on unexplained automation,
+an unhealthy collector or missing evidence. Keep both collectors running.
+Subsequent rollout phases and GTA VI boot changes require separate approval.
+
+**Milestone 1 blockers.** The installed revision, live collector health and
+database isolation, and any alternate automation are **UNKNOWN**. Both games
+still need verified off-VPS recovery anchors, independently scoped backup
+profiles and isolated restores. Timer-driven backups and monitor runs, alert
+failure/recovery delivery and GTA VI reboot recovery remain unverified.
+[Production acceptance gates](docs/MILESTONE_1_ROLLOUT.md#acceptance-and-risk)
 
 ## Product milestones
 
@@ -30,10 +41,23 @@ and verification for GTA VI reboot recovery.
 
 ## Workflow verification
 
-P0 and P1 passed locally. The P1 reference is
-`1c8c16d3d26660f35b6a54be7584ab7762b58307` with 159 tests and 7/7 offline checks
-on Windows. GitHub Actions and Ubuntu execution are **UNKNOWN**. P2 is a local
-context change and does not close a product or production gate.
+**Git at this handoff.** `chore/context-efficiency` at
+`f9985177f236167506f19b7fcdcf2edad089002f`, five commits ahead of `master`
+(`8fefbf957c3c81712d6c0cbdb26b4118fd3bd75f`) and none behind. No remote is
+configured. `PROJECT_STATUS.md` is the only modified file, and nothing is
+staged. Recheck Git state at the start of the next session.
+
+- **P0 GO locally.** Git exclusions, Linux line endings and release checks
+  verified. [P0 evidence](docs/PROJECT_HISTORY.md#2026-11-19-p0-git-baseline-hardening)
+- **P1 GO locally.** Windows clean-checkout verification passed with 159 tests
+  and 7/7 offline checks. Packaging matched the selected Git blobs.
+  GitHub Actions and Ubuntu execution are **UNKNOWN**.
+  [P1 evidence](docs/PROJECT_HISTORY.md#2026-11-19-p1-offline-verification-and-reproducible-packaging)
+- **P2 GO locally.** The shorter handoff preserves the original specification
+  and history. Windows strict verification again passed with 159 tests and
+  7/7 checks. The token pilot was inconclusive for successful tasks and for
+  choosing High versus Medium. No production gate was closed.
+  [P2 evidence](docs/PROJECT_HISTORY.md#2026-11-19-p2-context-and-token-efficiency)
 
 ## Read as needed
 
