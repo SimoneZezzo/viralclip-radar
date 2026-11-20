@@ -41,11 +41,11 @@ failure/recovery delivery and GTA VI reboot recovery remain unverified.
 
 ## Workflow verification
 
-**Git at this handoff.** `chore/context-efficiency` at
-`f9985177f236167506f19b7fcdcf2edad089002f`, five commits ahead of `master`
-(`8fefbf957c3c81712d6c0cbdb26b4118fd3bd75f`) and none behind. No remote is
-configured. `PROJECT_STATUS.md` is the only modified file, and nothing is
-staged. Recheck Git state at the start of the next session.
+**Git snapshot before this status refresh.** `chore/context-efficiency` at
+`c01480c6d401d84ae0cb4d169c333e409231395f`, six commits ahead of `master`
+(`8fefbf957c3c81712d6c0cbdb26b4118fd3bd75f`) and none behind. No remote was
+configured. The working tree and index were clean before this refresh.
+Recheck Git state at the start of the next session.
 
 - **P0 GO locally.** Git exclusions, Linux line endings and release checks
   verified. [P0 evidence](docs/PROJECT_HISTORY.md#2026-11-19-p0-git-baseline-hardening)
