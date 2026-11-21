@@ -2,6 +2,12 @@
 
 **CONDITIONAL GO for an operations-only rollout.** In the operator's 2026-11-19 samples, both collectors advanced and both databases passed integrity and category checks. The current VPS state and installed revision are **UNKNOWN**. Production acceptance depends on the gates below and separate authorization for phases 1–8. The rollback in phase 9 is for this first installation. Keep a single Linux shell for the authorized phases and record the outputs privately.
 
+The offline replay reproduced GTA VI's stalled checkpoint and partial-run
+pattern. The local candidate preserves contiguous progress and the request
+budget. Review the GTA VI rollout gates, including measured catch-up capacity,
+overlap and snapshot health, before authorizing a live change.
+[Candidate and rollout gates](GTA_VI_PILOT.md#offline-discovery-recovery-candidate).
+
 ## Local release review
 
 | Gate | Reviewed result |

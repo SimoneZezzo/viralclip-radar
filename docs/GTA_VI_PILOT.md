@@ -5,6 +5,9 @@ and credentials in place. Do not install or start this pilot before separate
 authorization. The live authenticated name lookup and reverse ID lookup on
 November 19, 2026 returned **Grand Theft Auto VI, 1867279146**. [Helix Get Games](https://dev.twitch.tv/docs/api/reference/games)
 
+For changes to the existing GTA VI service, see the
+[offline recovery candidate and rollout gates](#offline-discovery-recovery-candidate).
+
 ## Scope and capacity
 
 The pilot uses a new service account, executable tree, state directory,
@@ -47,6 +50,120 @@ Launch clips outside the initial window may be missed. Discovery delay,
 indexing lag and saturation increase 10-minute misses. Review strict 10m,
 30m and 60m coverage in `health` and report late/missed/unavailable jobs
 separately. A later observation does not recreate an earlier one.
+
+## Offline discovery recovery candidate
+
+The offline Helix replay exhausted 20 logical discovery calls in two
+successive cycles. Each cycle logged partial runs at 10, 10 and 0 pages
+and left the checkpoint at 23:11 UTC. The original algorithm spent the
+budget on the wide parent and its left child, then required both children
+to finish before advancing. Each cycle's later end widened the same retry.
+
+The candidate applies to category `1867279146`. It queries in UTC minute
+intervals of at most five minutes, shortens a partial interval and retries
+its first unresolved minute. Completed contiguous intervals advance the
+checkpoint even if the next interval spends the rest of the budget or
+returns an error. After a restart, existing run records supply the retry
+interval, including a failed initial run or a provisional checkpoint from
+the previous collector. A minute that reaches the truncation guard remains
+open. When new coverage reaches the cycle's cutoff, remaining requests
+revisit the existing lookback and overlap for delayed indexing.
+
+The 20-call discovery budget, 900-result guard, 10-page guard, page size,
+300-second cadence and configured 10-minute lookback stay in place. The
+collector runs due snapshots before discovery and between pages. Bounded
+Helix retries and observation requests are outside the discovery budget.
+GTA V keeps its existing discovery path. The candidate uses the existing
+SQLite schema and state. No live recovery evidence is available for it.
+
+### GTA VI data impact
+
+The latest read-only audit recorded the 2026-11-20 23:11 UTC checkpoint
+still stalled at the 2026-11-21 13:35 UTC follow-up, at least 14 hours
+and 24 minutes behind. November 20 had 83,760 seconds of completed search
+windows, leaving 44 minutes outside recorded complete coverage. The
+November 21 audit recorded zero complete-window seconds so far. Partial
+runs still returned clips and existing jobs continued recording views.
+These are audited search intervals. The percentage of Twitch clips
+discovered and the current endpoint of the gap are unknown.
+
+Catch-up can recover metadata and current counters for clips that Helix
+still returns. Get Clips orders by views, truncates bounds to whole
+minutes and caps the number of results per search. Recovery depends on
+clip availability, minute density and capacity within the same budget.
+Historical views absent from SQLite cannot be reconstructed from current
+counts. A late first observation cannot supply a missing 10m/30m/60m
+feature or a missed 24h outcome window. Retain actual timestamps.
+[Helix Get Clips](https://dev.twitch.tv/docs/api/reference/clips)
+
+Keep November 20 and 21 GTA VI UTC creation dates out of the primary M2
+day-level evaluation while coverage or label maturity remains incomplete.
+Recompute the actual coverage union and censoring after any approved
+catch-up. Report late discovery, missing early observations and immature
+or unavailable outcomes separately. Any evaluation of these partial days
+belongs in a separate sensitivity analysis. Keep the existing 24h+5m
+label-maturity embargo and the chronological gates.
+[M2 readiness gates](CHRONOLOGICAL_EVALUATION.md#research-readiness-and-gta-v-retirement)
+
+### Future rollout decision
+
+Resolve the reviewed correction with
+`git log --format=%H --grep='^fix(collector): prevent GTA VI discovery checkpoint starvation$' -1`.
+Record the full revision with the release SHA-256. Build the archive with
+`scripts/package_release.py --revision <full-commit> --output <new.tar.gz>`.
+Verify both the manifest of Git blobs and the archive SHA-256 before
+staging. The archive includes source, tests and deployment templates.
+Apply only the reviewed GTA VI runtime change.
+
+1. Obtain specific authorization for a GTA VI-only release and service
+   handoff. Inspect the live unit, effective interpreter path, Python
+   version, installed module locations and hashes for both games. Compare
+   the GTA VI runtime with the reviewed baseline. Identify and verify the
+   previous runtime for rollback. Keep credentials out of the evidence.
+2. Before the handoff, capture a read-only baseline for both games. Record
+   service identity and boot policy, PID and start time, distinct DB
+   device/inode/link count, checkpoint and flagged intervals, latest
+   observations, overdue and failed jobs, disk reserve and recent 429s.
+   Correlate complete UTC minutes per cycle, logical requests and retry
+   load with the incoming five minutes per cycle. Verify the GTA VI ID,
+   path, writer isolation, cadence and existing resource settings.
+3. After approval, verify the SHA-256 again in private staging. Check
+   available bytes and inodes on both staging and runtime filesystems
+   against the disk reserve and the space for two releases. Verify
+   runtime ownership, directory traversal and executable access for the
+   GTA VI service user. Test the isolated runtime with synthetic data and
+   verify it resolves reviewed modules from the final service path.
+   Keep the unit, environment, authorization marker and state paths in
+   place. Stop only GTA VI, confirm its writer has exited, switch its
+   dedicated runtime at the existing path, then start only GTA VI.
+   Record the new GTA VI PID and release. Verify that GTA V's PID, start
+   time, executable and database identity stay stable.
+4. Sample at least three successive GTA VI discovery cycles and continue
+   through backlog reduction and one normal overlap cycle. Confirm
+   contiguous completed windows against the starting watermark and each
+   successive watermark, shrinking lag while backlogged, active
+   observations and stable job lateness, rate limits and disk reserve.
+   Check the completed-window union for gaps and confirm that persistently
+   saturated minutes remain partial and visible.
+   Compare job P95 and the oldest overdue job with the baseline and the
+   [operations thresholds](MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan).
+
+**GO for rollout** requires the reviewed artifact and its digest, explicit
+authorization, an acceptable baseline, service and DB isolation, and a
+verified executable rollback path. **GO to continue** requires contiguous
+progress and backlog reduction (or a caught-up checkpoint), working
+overlap, healthy jobs, and an unchanged GTA V service. **NO-GO** applies
+to a persistent saturated minute, a missing interval under the checkpoint,
+lag that fails to shrink under sustained load, more 429s or worsening
+snapshot health, a storage alert, or a change to GTA V's process or DB
+identity. For an authorized rollback, stop only GTA VI, confirm no writer
+remains, restore the verified previous runtime at the existing service
+path and start GTA VI. Recheck its code hash, database identity, checkpoint
+and observation jobs, and confirm GTA V still matches the baseline.
+Preserve the DB, WAL, valid checkpoint and run evidence throughout.
+Rollback restores the prior discovery behavior and may bring back the
+stall. If capacity is insufficient, quantify the gap and seek approval
+for any configuration change.
 
 ## Windows preparation
 

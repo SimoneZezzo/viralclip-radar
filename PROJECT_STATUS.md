@@ -1,41 +1,34 @@
 # Project status and session handoff
 
-Last updated: 2026-11-19 (Europe/Rome).
+Last updated 2026-11-21 (Europe/Rome).
 
 ## Current priority
 
-Resume **Milestone 1** at phase 0. In the operator's two 2026-11-19 samples,
-about four minutes apart, GTA V and GTA VI advanced on OVH with distinct PIDs
-and passed SQLite integrity and category checks. GTA V was enabled at boot
-and GTA VI was reported disabled. The expected operations units and timers
-were absent in those samples. Current production state is **UNKNOWN**.
-[Operator samples](docs/PROJECT_HISTORY.md#2026-11-19-operator-production-evidence-and-milestone-1-release-review)
+**M1-02 cancelled. M1-01 remains PARTIAL.** The operator waived the unmet
+original off-VPS requirement and accepted permanent loss of the experimental
+dataset if the VPS and its copies are lost. Automated backups and off-VPS
+storage are outside the current plan. Existing VPS copies are retained.
 
-**Next task.** Obtain explicit authorization for phase 0 VPS access and run the
-[read-only rollout inventory](docs/MILESTONE_1_ROLLOUT.md#0-linux-vps--read-only-inventory-and-baseline).
-Inventory the expected and alternate backup and monitor schedules. Take two
-timestamped UTC samples at least six minutes apart. For each collector,
-record the health verdict, service PID, DB device/inode, category and integrity
-checks, discovery watermarks and job progress. Record disk and RAM headroom.
-Phase 0 is complete when both samples and the inventory are recorded, with
-any failures or gaps identified. Hold the rollout on unexplained automation,
-an unhealthy collector or missing evidence. Keep both collectors running.
-Subsequent rollout phases and GTA VI boot changes require separate approval.
-
-**Milestone 1 blockers.** The installed revision, live collector health and
-database isolation, and any alternate automation are **UNKNOWN**. Both games
-still need verified off-VPS recovery anchors, independently scoped backup
-profiles and isolated restores. Timer-driven backups and monitor runs, alert
-failure/recovery delivery and GTA VI reboot recovery remain unverified.
-[Production acceptance gates](docs/MILESTONE_1_ROLLOUT.md#acceptance-and-risk)
+**GTA VI discovery recovery candidate.** The offline Helix replay reproduced
+the stalled checkpoint and partial-run pattern. The local candidate commits
+completed UTC windows in order and carries the first unresolved interval
+into the next cycle within the existing request budget. Live recovery is
+**UNKNOWN**. The local release is identified by the commit subject
+`fix(collector): prevent GTA VI discovery checkpoint starvation`. The
+strict offline suite passes with 175 tests. Deployment awaits separate
+approval and a fresh preflight. Keep GTA V running through its required
+training, validation and testing. Return to M2 and M3 after discovery
+stabilizes. Collector availability, disk monitoring and GTA VI boot
+recovery remain open.
+[Candidate and rollout gates](docs/GTA_VI_PILOT.md#offline-discovery-recovery-candidate)
 
 ## Product milestones
 
 | Milestone | Status and remaining gate |
 | --- | --- |
 | 0. Collector MVP | **GO**, 2026-11-18. The post-resumption cohort had 1,323 clips with a first-hour observation and linked 24h outcome. |
-| 1. Reliable 24/7 service | 1A and 1B complete. Dual-collector operations fixes are verified offline. Unattended production acceptance remains open. |
-| 2. Features, baselines and labels | 2A and 2B implemented. Evaluate the four baselines after independent full UTC creation days mature. Keep the 24h+5m label-maturity embargo and report coverage and censoring. |
+| 1. Reliable 24/7 service | 1A and 1B complete. Availability, lightweight monitoring and GTA VI recovery remain open. M1-01 PARTIAL. M1-02 cancelled. |
+| 2. Features, baselines and labels | 2A and 2B implemented. The current mature-day cohort falls short of scoring. Keep the 24h+5m label-maturity embargo and report coverage and censoring. |
 | 3. Machine learning | Pending validated features and enough mature labels. |
 | 4. Open-source demo | Pending synthetic offline demo and presentation. |
 

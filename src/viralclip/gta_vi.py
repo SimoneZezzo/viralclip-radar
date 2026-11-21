@@ -9,13 +9,14 @@ from contextlib import closing
 from pathlib import Path
 
 from viralclip.cli import main as collector
+from viralclip.collector.service import GTA_VI_GAME_ID
 from viralclip.config import load_settings
 from viralclip.deployment import _check_schema, _open_read_only
 from viralclip.twitch.client import TwitchAPIError, TwitchClient
 
 NAME = "Grand Theft Auto VI"
 # Verified by authenticated Helix Get Games name and ID lookups on 2026-11-19.
-APPROVED_GAME_ID = "1867279146"
+APPROVED_GAME_ID = GTA_VI_GAME_ID
 DB_NAME = "gta-vi.sqlite3"
 INTERVAL, LOOKBACK = 300, 10
 
