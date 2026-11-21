@@ -107,13 +107,23 @@ label-maturity embargo and the chronological gates.
 
 ### Future rollout decision
 
-Resolve the reviewed correction with
-`git log --format=%H --grep='^fix(collector): prevent GTA VI discovery checkpoint starvation$' -1`.
-Record the full revision with the release SHA-256. Build the archive with
-`scripts/package_release.py --revision <full-commit> --output <new.tar.gz>`.
-Verify both the manifest of Git blobs and the archive SHA-256 before
-staging. The archive includes source, tests and deployment templates.
-Apply only the reviewed GTA VI runtime change.
+The verified source revision is
+`c2e5c21300de1d6d98a89f8b7769fe69bdbd621e`.
+The archive contains 53 files and its SHA-256 is
+`d3e5bcc4506c44de43de737af023de452c3c3b57316a713ebcc9c60f697ff451`.
+To reproduce the archive locally with a fresh output path, run:
+
+```powershell
+$revision = 'c2e5c21300de1d6d98a89f8b7769fe69bdbd621e'
+$archive = "data/viralclip-gta-vi-$revision-rebuild.tar.gz"
+uv run --offline --no-sync python -B scripts/package_release.py $revision --output $archive
+if ($LASTEXITCODE -ne 0) { throw 'Source packaging failed' }
+Get-FileHash -Algorithm SHA256 -LiteralPath $archive
+```
+
+The packager verifies archive members against the Git blobs. Compare the
+full SHA-256 before staging. The archive includes source, tests and
+deployment templates. Apply only the reviewed GTA VI runtime change.
 
 1. Obtain specific authorization for a GTA VI-only release and service
    handoff. Inspect the live unit, effective interpreter path, Python
