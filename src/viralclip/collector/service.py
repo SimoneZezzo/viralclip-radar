@@ -4,13 +4,22 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from viralclip.storage.database import Database, to_utc_iso, utc_now
+from viralclip.storage.discovery import (
+    BUCKET,
+    bucket_start,
+    ensure_scan_ledger,
+    historical_retry,
+    history_start,
+)
 from viralclip.twitch.client import TwitchAPIError, TwitchClient
 
 GTA_VI_GAME_ID = "1867279146"
 DISCOVERY_BUDGET = 20
-MINUTE = timedelta(minutes=1)
 OVERLAP = timedelta(minutes=5)
-GTA_VI_WINDOW = timedelta(minutes=5)
+GTA_VI_RECENT_PAGES = 10
+GTA_VI_OVERLAP_PAGES = 7
+GTA_VI_HISTORY_PAGES = DISCOVERY_BUDGET - GTA_VI_RECENT_PAGES - GTA_VI_OVERLAP_PAGES
+GTA_VI_RETRY_DELAY = timedelta(minutes=30)
 
 
 class Collector:
@@ -46,7 +55,10 @@ class Collector:
         return game_id
 
     def discover(self, game_id: str) -> int:
-        end = self.clock().astimezone(UTC).replace(second=0, microsecond=0)
+        now = self.clock().astimezone(UTC)
+        if game_id == GTA_VI_GAME_ID:
+            return self._discover_gta_vi(game_id, now)
+        end = now.replace(second=0, microsecond=0)
         start = end - timedelta(minutes=self.lookback_minutes)
         row = self.database.connection.execute(
             "SELECT watermark FROM discovery_checkpoints WHERE game_id = ?", (game_id,)
@@ -55,16 +67,6 @@ class Collector:
         if checkpoint is not None:
             start = min(start, checkpoint - OVERLAP)
         budget = [DISCOVERY_BUDGET]
-        if game_id == GTA_VI_GAME_ID:
-            frontier = self._uncovered_start(game_id, start, checkpoint)
-            count, covered = self._discover_prefix(
-                game_id, frontier, end, budget, advance_after=checkpoint or frontier
-            )
-            if covered == end and start < frontier and budget[0] > 0:
-                # Refresh prior coverage only after attempting the outstanding interval.
-                repeated, _ = self._discover_prefix(game_id, start, frontier, budget)
-                count += repeated
-            return count
         if checkpoint is None:
             self.database.update_watermark(game_id, start + OVERLAP)
         count, complete = self._discover_window(game_id, start, end, budget)
@@ -72,74 +74,106 @@ class Collector:
             self.database.update_watermark(game_id, end)
         return count
 
-    def _uncovered_start(
-        self, game_id: str, start: datetime, checkpoint: datetime | None
-    ) -> datetime:
-        first = self.database.connection.execute(
-            "SELECT window_start FROM collection_runs WHERE game_id = ? ORDER BY run_id LIMIT 1",
-            (game_id,),
-        ).fetchone()
-        if checkpoint is None:
-            # Retain the first attempted interval if a startup run never completed.
-            return min(start, datetime.fromisoformat(first[0])) if first else start
-        if first and checkpoint != datetime.fromisoformat(first[0]) + OVERLAP:
-            return checkpoint
-        # The older collector seeded a checkpoint five minutes into its initial
-        # window before making any request. Reuse only its completed prefix.
-        frontier = checkpoint - OVERLAP
-        for window in self.database.connection.execute(
-            """
-            SELECT window_start, window_end FROM collection_runs
-            WHERE game_id = ? AND status = 'completed' AND potentially_truncated = 0
-              AND error_summary IS NULL AND window_end > ? AND window_start < ?
-            ORDER BY window_start
-            """,
-            (game_id, to_utc_iso(frontier), to_utc_iso(checkpoint)),
-        ):
-            if datetime.fromisoformat(window["window_start"]) > frontier:
-                break
-            frontier = max(frontier, datetime.fromisoformat(window["window_end"]))
-            if frontier >= checkpoint:
-                return checkpoint
-        return frontier
-
-    def _discover_prefix(
-        self,
-        game_id: str,
-        start: datetime,
-        end: datetime,
-        budget: list[int],
-        *,
-        advance_after: datetime | None = None,
-    ) -> tuple[int, datetime]:
-        width = GTA_VI_WINDOW
-        previous = self.database.connection.execute(
-            """
-            SELECT window_end, status FROM collection_runs
-            WHERE game_id = ? AND window_start = ? AND status IN ('completed','partial')
-              AND request_count > 0
-            ORDER BY run_id DESC LIMIT 1
-            """,
-            (game_id, to_utc_iso(start)),
-        ).fetchone()
-        if previous and previous["status"] == "partial":
-            prior_span = datetime.fromisoformat(previous["window_end"]) - start
-            width = min(width, max(MINUTE, (prior_span // (2 * MINUTE)) * MINUTE))
+    def _discover_gta_vi(self, game_id: str, now: datetime) -> int:
+        db = self.database.connection
+        ensure_scan_ledger(db)
+        current = bucket_start(now)
+        previous = current - BUCKET
+        frontier = history_start(db, game_id, previous)
         count = 0
-        while start < end and budget[0] > 0:
-            stop = min(start + width, end)
-            found, complete = self._discover_window(game_id, start, stop, budget, subdivide=False)
-            count += found
-            if complete:
-                start = stop
-                if advance_after is not None and start > advance_after:
-                    self.database.update_watermark(game_id, start)
-            elif stop - start > MINUTE:
-                width = max(MINUTE, ((stop - start) // (2 * MINUTE)) * MINUTE)
-            else:
-                # A saturated minute remains explicitly incomplete.
-                break
-        return count, start
+        if now > current:
+            count += self._scan_gta_vi(game_id, current, now, "recent", GTA_VI_RECENT_PAGES)
+        count += self._scan_gta_vi(game_id, previous, current, "recent", GTA_VI_OVERLAP_PAGES)
+        if frontier < previous:
+            end = min(bucket_start(frontier) + BUCKET, previous)
+            count += self._scan_gta_vi(game_id, frontier, end, "history", GTA_VI_HISTORY_PAGES)
+        else:
+            retry = historical_retry(db, game_id, previous, now - GTA_VI_RETRY_DELAY)
+            if retry:
+                count += self._scan_gta_vi(game_id, *retry, "retry", GTA_VI_HISTORY_PAGES)
+        return count
+
+    def _scan_gta_vi(
+        self, game_id: str, start: datetime, end: datetime, lane: str, budget: int
+    ) -> int:
+        run = self.database.create_run(game_id, start, end, self.clock())
+        query_start = bucket_start(start)
+        cursor = None
+        cursors: set[str] = set()
+        wire_ids: set[str] = set()
+        unique_ids: set[str] = set()
+        requested = pages = raw = pertinent = repeated = new = 0
+        error = None
+        outcome = "page_limit" if budget == GTA_VI_RECENT_PAGES else "budget"
+        try:
+            for _ in range(budget):
+                self.collect_due_snapshots()
+                requested += 1
+                payload = self.twitch.get_clips(
+                    game_id=game_id,
+                    started_at=query_start,
+                    ended_at=query_start + BUCKET,
+                    after=cursor,
+                )
+                pages += 1
+                page = self.twitch.parse_data(payload)
+                observed_at = self.clock()
+                raw += len(page)
+                new_wire_ids = False
+                outside_query = False
+                for payload_clip in page:
+                    clip = self._parse_clip(payload_clip)
+                    clip_id = clip["id"]
+                    if clip_id in wire_ids:
+                        repeated += 1
+                    else:
+                        wire_ids.add(clip_id)
+                        new_wire_ids = True
+                    created = clip["created_at"]
+                    if not query_start <= created < query_start + BUCKET:
+                        outside_query = True
+                    if start <= created < end:
+                        pertinent += 1
+                        if clip_id not in unique_ids:
+                            unique_ids.add(clip_id)
+                            new += self.database.record_clip(clip, game_id, observed_at, run)
+                cursor = self.twitch.parse_cursor(payload)
+                if outside_query or (cursor and (cursor in cursors or not new_wire_ids)):
+                    outcome = "pagination_anomaly"
+                    break
+                if not cursor:
+                    known = self.database.connection.execute(
+                        """
+                        SELECT clip_id FROM clips
+                        WHERE game_id = ? AND created_at >= ? AND created_at < ?
+                        """,
+                        (game_id, to_utc_iso(start), to_utc_iso(end)),
+                    )
+                    outcome = (
+                        "known_incomplete"
+                        if any(row[0] not in unique_ids for row in known)
+                        else "cursor_exhausted"
+                    )
+                    break
+                cursors.add(cursor)
+        except TwitchAPIError as exc:
+            error = exc
+            outcome = "error"
+        self.database.finish_run(
+            run,
+            self.clock(),
+            requested,
+            pages,
+            raw,
+            new,
+            truncated=outcome not in ("cursor_exhausted", "error"),
+            error=str(error) if error else None,
+            unique=len(unique_ids),
+            scan=(lane, outcome, pertinent, repeated),
+        )
+        if error:
+            raise error
+        return new
 
     def _discover_window(
         self,
@@ -147,8 +181,6 @@ class Collector:
         start: datetime,
         end: datetime,
         budget: list[int],
-        *,
-        subdivide: bool = True,
     ) -> tuple[int, bool]:
         run_id = self.database.create_run(game_id, start, end, self.clock())
         pages = 0
@@ -199,7 +231,7 @@ class Collector:
             )
 
             span = (end - start).total_seconds()
-            if subdivide and truncated and span >= 120 and budget[0] > 0:
+            if truncated and span >= 120 and budget[0] > 0:
                 midpoint = start + (end - start) / 2
                 midpoint = midpoint.replace(second=0, microsecond=0)
                 if start < midpoint < end:

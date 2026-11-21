@@ -334,7 +334,12 @@ class Database:
         truncated: bool = False,
         error: str | None = None,
         unique: int = 0,
+        *,
+        scan: tuple[str, str, int, int] | None = None,
     ) -> None:
+        status = "error" if error else ("partial" if truncated else "completed")
+        if scan is not None and scan[1] == "cursor_exhausted":
+            status = "scanned"
         with self.transaction() as conn:
             conn.execute(
                 """
@@ -349,13 +354,21 @@ class Database:
                     pages,
                     seen,
                     new,
-                    "error" if error else ("partial" if truncated else "completed"),
+                    status,
                     int(truncated),
                     error,
                     unique,
                     run_id,
                 ),
             )
+            if scan is not None:
+                conn.execute(
+                    """
+                    INSERT INTO gta_vi_scan_attempts (run_id, lane, outcome, pertinent, repeated)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (run_id, *scan),
+                )
 
     def update_watermark(self, game_id: str, watermark: datetime) -> None:
         with self.transaction() as conn:

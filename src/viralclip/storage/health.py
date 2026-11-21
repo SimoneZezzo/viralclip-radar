@@ -11,6 +11,7 @@ from pathlib import Path
 from statistics import median
 
 from viralclip.storage.database import TARGET_AGES_SECONDS, parse_utc, to_utc_iso, utc_now
+from viralclip.storage.discovery import scan_progress
 
 HEALTHY, DEGRADED, CRITICAL = range(3)
 LEVELS = ("HEALTHY", "DEGRADED", "CRITICAL")
@@ -33,6 +34,9 @@ def _discovery(
     lines: list[str],
     alerts: list[tuple[int, str]],
 ) -> None:
+    ledger = db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'gta_vi_scan_attempts'"
+    ).fetchone()
     last_success = db.execute(
         """
         SELECT MAX(finished_at) FROM collection_runs
@@ -40,7 +44,8 @@ def _discovery(
         """
     ).fetchone()[0]
     label = f"{last_success} ({_age(now, last_success):.1f}s ago)" if last_success else "never"
-    lines.append(f"Last successful discovery: {label}")
+    scope = "legacy " if ledger else ""
+    lines.append(f"Last {scope}successful discovery: {label}")
     categories = db.execute(
         """
         SELECT g.game_id, c.watermark,
@@ -68,6 +73,30 @@ def _discovery(
         alerts.append((DEGRADED, "No discovery categories recorded yet."))
     for row in categories:
         game = f"Category {row['game_id']!r}"
+        if ledger and row["game_id"] == "1867279146":
+            recent, history = scan_progress(db, row["game_id"])
+            lines.append(
+                f"{game}: recent scan watermark {recent or 'none'}, "
+                f"historical scan watermark {history or 'none'}, "
+                f"legacy checkpoint {row['watermark'] or 'none'}; coverage uncertified"
+            )
+            outcomes = db.execute(
+                """
+                SELECT s.lane, s.outcome, COUNT(*) FROM gta_vi_scan_attempts s
+                JOIN collection_runs r USING (run_id)
+                WHERE r.game_id = ? AND r.finished_at >= ?
+                GROUP BY s.lane, s.outcome ORDER BY s.lane, s.outcome
+                """,
+                (row["game_id"], since),
+            )
+            lines.extend(f"  {lane} {outcome}: {count}" for lane, outcome, count in outcomes)
+            age = (now - recent).total_seconds() if recent else None
+            if age is None or age > max(600, 2 * interval_seconds):
+                severity = CRITICAL if age and age > max(1800, 6 * interval_seconds) else DEGRADED
+                alerts.append((severity, f"{game} recent discovery scan is stale."))
+            if row["errors"]:
+                alerts.append((DEGRADED, f"{game} has recent discovery errors."))
+            continue
         success = row["last_success"]
         watermark = row["watermark"]
         success_age = _age(now, success) if success else None

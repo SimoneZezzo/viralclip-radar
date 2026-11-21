@@ -1,17 +1,26 @@
 from contextlib import closing
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
 from test_collector import clip, make_client
 
 from viralclip.collector.service import Collector
+from viralclip.deployment import _check_schema, _open_read_only
 from viralclip.gta_vi import APPROVED_GAME_ID
 from viralclip.storage.database import Database, to_utc_iso
+from viralclip.storage.discovery import (
+    BUCKET,
+    bucket_start,
+    ensure_scan_ledger,
+    historical_retry,
+    scan_progress,
+)
+from viralclip.storage.health import read_health
 from viralclip.twitch.client import TwitchAPIError
 
 MINUTE = timedelta(minutes=1)
-STALLED = datetime(2026, 11, 20, 23, 11, tzinfo=UTC)
+STALLED = datetime(2026, 11, 20, 23, 19, tzinfo=UTC)
 NOW = datetime(2026, 11, 21, 13, 34, tzinfo=UTC)
 
 
@@ -62,307 +71,317 @@ def paged_response(request, count, page_size=99):
     )
 
 
-def test_gta_vi_dense_backlog_advances_without_repeating_broad_window(tmp_path, monkeypatch):
+def attempts(db):
+    return [
+        tuple(row)
+        for row in db.connection.execute(
+            """
+            SELECT s.lane, s.outcome, r.window_start, r.window_end, r.request_count,
+                   r.clips_seen, s.pertinent, r.unique_clips, s.repeated, r.status
+            FROM gta_vi_scan_attempts s JOIN collection_runs r USING (run_id) ORDER BY run_id
+            """
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("rows", "distinct", "inside"), [(982, 798, 117), (984, 835, 107), (991, 805, 104)]
+)
+def test_raw_saturation_with_duplicates_does_not_claim_coverage(tmp_path, rows, distinct, inside):
+    aligned = bucket_start(STALLED)
+    data = [clip(f"outside-{i}", created_at=aligned) for i in range(distinct - inside)]
+    data += [clip(f"inside-{i}", created_at=STALLED) for i in range(inside)]
+    pages = []
+    offset = 0
+    for index in range(10):
+        take = distinct // 10 + (index < distinct % 10)
+        page = data[offset : offset + take]
+        offset += take
+        pages.append(page + [data[0]] * (min(100, rows - index * 100) - take))
+
+    def handler(request):
+        assert window(request) == (aligned, aligned + BUCKET)
+        page = int(request.url.params.get("after", 0))
+        return response(pages[page], str(page + 1))
+
+    twitch = mocked_client(handler)
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        ensure_scan_ledger(db.connection)
+        collector = Collector(db, twitch, clock=lambda: NOW)
+        assert (
+            collector._scan_gta_vi(APPROVED_GAME_ID, STALLED, STALLED + MINUTE, "history", 10)
+            == inside
+        )
+        assert attempts(db)[0][1:] == (
+            "page_limit",
+            to_utc_iso(STALLED),
+            to_utc_iso(STALLED + MINUTE),
+            10,
+            rows,
+            inside,
+            inside,
+            rows - distinct,
+            "partial",
+        )
+        assert checkpoint(db) == to_utc_iso(STALLED)
+
+
+def test_recent_discovery_continues_past_gap_and_survives_restart(tmp_path):
+    path = tmp_path / "vi.sqlite3"
     now = NOW
-    requests = []
+    calls = []
 
     def handler(request):
         assert request.url.params["game_id"] == APPROVED_GAME_ID
         start, end = window(request)
-        requests.append((start, end))
-        return paged_response(request, 120 * ((end - start) // MINUTE))
+        calls.append(start)
+        if start >= bucket_start(now) - BUCKET:
+            data = [clip(f"fresh-{now.isoformat()}", created_at=now - timedelta(seconds=2))]
+            return response(data if start == bucket_start(now) else [])
+        offset = int(request.url.params.get("after", "0"))
+        return response(
+            [clip(f"old-{start.isoformat()}-{offset}", created_at=end - MINUTE)], str(offset + 1)
+        )
+
+    for i in range(2):
+        twitch = mocked_client(handler)
+        with closing(Database(path)) as db, twitch.http:
+            if i == 0:
+                seed(db)
+            assert Collector(db, twitch, clock=lambda now=now: now).discover(APPROVED_GAME_ID) >= 1
+            recent, history = scan_progress(db.connection, APPROVED_GAME_ID)
+            assert recent == now
+            assert history == STALLED + MINUTE + i * BUCKET
+            assert checkpoint(db) == to_utc_iso(STALLED)
+            assert len(calls) == 5
+            assert calls[0] == bucket_start(now)
+            gap = next(row for row in attempts(db) if row[2] == to_utc_iso(STALLED))
+            assert gap[0:2] == ("history", "budget")
+            assert (
+                db.connection.execute(
+                    "SELECT count(*) FROM clips WHERE clip_id LIKE 'fresh-%'"
+                ).fetchone()[0]
+                == i + 1
+            )
+        calls.clear()
+        now += 5 * MINUTE
+    _, lines = read_health(path, 300, now=now)
+    assert any("coverage uncertified" in line for line in lines)
+    assert any("legacy checkpoint " + to_utc_iso(STALLED) in line for line in lines)
+
+
+def test_cursor_exhaustion_with_sixty_known_omissions_is_partial(tmp_path):
+    twitch = mocked_client(lambda _: response())
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        ensure_scan_ledger(db.connection)
+        for n in range(60):
+            db.record_clip(
+                Collector._parse_clip(clip(str(n), created_at=STALLED)), APPROVED_GAME_ID, NOW, None
+            )
+        Collector(db, twitch, clock=lambda: NOW)._scan_gta_vi(
+            APPROVED_GAME_ID, STALLED, STALLED + MINUTE, "history", 3
+        )
+        assert attempts(db)[0][1] == "known_incomplete"
+        assert attempts(db)[0][-1] == "partial"
+        assert scan_progress(db.connection, APPROVED_GAME_ID) == (None, STALLED + MINUTE)
+        assert checkpoint(db) == to_utc_iso(STALLED)
+
+
+def test_recent_and_history_budgets_are_independent(tmp_path):
+    def handler(request):
+        start, _ = window(request)
+        page = int(request.url.params.get("after", "0"))
+        return response([clip(f"{start}-{page}", created_at=start)], str(page + 1))
 
     twitch = mocked_client(handler)
-    with closing(Database(tmp_path / "gta-vi.sqlite3")) as db, twitch.http:
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
         seed(db)
-        # Bulk cases omit clip writes. Smaller cases exercise real SQLite writes.
-        monkeypatch.setattr(db, "record_clip", lambda *args: False)
-        collector = Collector(db, twitch, lookback_minutes=10, clock=lambda: now)
-        watermarks = [to_utc_iso(STALLED)]
-        queried_windows = []
-        for _ in range(2):
-            requests.clear()
-            collector.discover(APPROVED_GAME_ID)
-            watermarks.append(checkpoint(db))
-            assert 0 < len(requests) <= 20
-            queried_windows.extend(requests)
-            now += 5 * MINUTE
-        runs = db.connection.execute(
-            "SELECT status, pages_seen FROM collection_runs WHERE run_id > 1 ORDER BY run_id"
-        ).fetchall()
-        assert watermarks == [
-            to_utc_iso(STALLED),
-            to_utc_iso(STALLED + 10 * MINUTE),
-            to_utc_iso(STALLED + 22 * MINUTE),
-        ], [tuple(run) for run in runs]
-        assert all(run["pages_seen"] for run in runs)
-        assert all(end - start <= 5 * MINUTE for start, end in queried_windows)
+        Collector(db, twitch, clock=lambda: NOW).discover(APPROVED_GAME_ID)
+        assert [(row[0], row[1], row[4]) for row in attempts(db)] == [
+            ("recent", "page_limit", 10),
+            ("recent", "budget", 7),
+            ("history", "budget", 3),
+        ]
+        assert scan_progress(db.connection, APPROVED_GAME_ID) == (NOW, STALLED + MINUTE)
 
 
 @pytest.mark.parametrize(
-    ("clips", "cursors"), [(0, [None]), (43, [None]), (100, [None]), (137, [None, "100"])]
+    ("kind", "outcome", "requests", "raw", "pertinent", "unique", "dups"),
+    [
+        ("legitimate", "cursor_exhausted", 2, 5, 4, 2, 2),
+        ("repeated_cursor", "pagination_anomaly", 2, 5, 4, 2, 2),
+        ("no_progress", "pagination_anomaly", 2, 4, 3, 1, 2),
+        ("outside_query", "pagination_anomaly", 1, 1, 0, 0, 0),
+    ],
 )
-def test_short_window_follows_cursor_and_replays_overlap(tmp_path, clips, cursors):
-    frontier = NOW - 5 * MINUTE
-    forward = []
-    overlap = []
-
+def test_filter_and_deduplicate_without_certifying_coverage(
+    tmp_path,
+    kind,
+    outcome,
+    requests,
+    raw,
+    pertinent,
+    unique,
+    dups,
+):
     def handler(request):
-        bounds = window(request)
-        assert request.url.params["first"] == "100"
-        if bounds == (frontier, NOW):
-            forward.append(request.url.params.get("after"))
-            return paged_response(request, clips, page_size=100)
-        overlap.append(bounds)
-        return response()
+        if kind == "outside_query":
+            return response([clip("bad", created_at=STALLED - BUCKET)])
+        first = clip("same", created_at=STALLED)
+        if "after" not in request.url.params:
+            return response([first, first, clip("out", created_at=STALLED - MINUTE)], "one")
+        if kind == "no_progress":
+            return response([first], "two")
+        return response(
+            [first, clip("new", created_at=STALLED)], "one" if kind == "repeated_cursor" else None
+        )
 
     twitch = mocked_client(handler)
-    with closing(Database(tmp_path / "gta-vi.sqlite3")) as db, twitch.http:
-        seed(db, frontier)
-        local_now = NOW.astimezone(timezone(timedelta(hours=2))) + timedelta(seconds=59)
-        collector = Collector(db, twitch, lookback_minutes=10, clock=lambda: local_now)
-        assert collector.discover(APPROVED_GAME_ID) == clips
-        assert checkpoint(db) == to_utc_iso(NOW)
-        assert forward == cursors
-        assert overlap == [(NOW - 10 * MINUTE, frontier)]
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        ensure_scan_ledger(db.connection)
+        Collector(db, twitch, clock=lambda: NOW)._scan_gta_vi(
+            APPROVED_GAME_ID, STALLED, STALLED + MINUTE, "history", 3
+        )
+        record = attempts(db)[0]
+        assert record[1] == outcome
+        assert record[4:9] == (requests, raw, pertinent, unique, dups)
+        assert record[-1] == ("scanned" if outcome == "cursor_exhausted" else "partial")
+        assert db.connection.execute("SELECT count(*) FROM clip_snapshots").fetchone()[0] == unique
+        assert checkpoint(db) == to_utc_iso(STALLED)
 
 
-@pytest.mark.parametrize(("clips_per_minute", "progresses"), [(500, True), (950, False)])
-def test_dense_first_slice_narrows_across_cycles_and_restart(
-    tmp_path, monkeypatch, clips_per_minute, progresses
-):
-    path = tmp_path / "gta-vi.sqlite3"
+@pytest.mark.parametrize("failure", ["timeout", "http", "invalid_pagination"])
+def test_interrupted_pagination_records_error_with_bounded_retries(tmp_path, failure):
     requests = []
 
     def handler(request):
-        start, end = window(request)
-        requests.append((start, end))
-        return paged_response(request, clips_per_minute * ((end - start) // MINUTE))
+        requests.append(request)
+        if len(requests) == 1:
+            return response([clip("fresh", created_at=bucket_start(NOW))], "one")
+        if failure == "timeout":
+            raise httpx.ReadTimeout("fixture")
+        if failure == "http":
+            return httpx.Response(503)
+        return httpx.Response(200, json={"data": [], "pagination": []})
 
     twitch = mocked_client(handler)
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        with pytest.raises(TwitchAPIError):
+            Collector(db, twitch, clock=lambda: NOW).discover(APPROVED_GAME_ID)
+        assert len(requests) == (2 if failure == "invalid_pagination" else 5)
+        assert attempts(db)[0][0:2] == ("recent", "error")
+        assert attempts(db)[0][4:8] == (2, 1, 1, 1)
+        assert checkpoint(db) == to_utc_iso(STALLED)
+
+
+def test_historical_retry_after_sweep_is_bounded(tmp_path):
+    now = NOW
+    prior = bucket_start(now) - BUCKET
+    blocked = prior - BUCKET
+    calls = []
+
+    def handler(request):
+        if "id" in request.url.params:
+            return response(
+                [clip(name, created_at=blocked) for name in request.url.params.get_list("id")]
+            )
+        start, _ = window(request)
+        calls.append(start)
+        if start == blocked and calls.count(blocked) <= 3:
+            offset = int(request.url.params.get("after", 0))
+            return response([clip(str(offset), created_at=blocked)], str(offset + 1))
+        if start == blocked:
+            return response([clip(str(n), created_at=blocked) for n in range(4)])
+        return response()
+
+    twitch = mocked_client(handler)
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db, blocked)
+        collector = Collector(db, twitch, clock=lambda: now)
+        collector.discover(APPROVED_GAME_ID)
+        assert attempts(db)[-1][0:2] == ("history", "budget")
+        assert historical_retry(db.connection, APPROVED_GAME_ID, prior, now) == (blocked, prior)
+        now += timedelta(minutes=31)
+        # The contiguous historical pass runs before any retry.
+        while scan_progress(db.connection, APPROVED_GAME_ID)[1] < bucket_start(now) - BUCKET:
+            collector.discover(APPROVED_GAME_ID)
+        collector.discover(APPROVED_GAME_ID)
+        assert attempts(db)[-1][0:2] == ("retry", "cursor_exhausted")
+        assert historical_retry(db.connection, APPROVED_GAME_ID, prior, now) is None
+        assert checkpoint(db) == to_utc_iso(blocked)
+
+
+def test_graceful_stop_partial_run_is_recovered_without_progress(tmp_path):
+    path = tmp_path / "vi.sqlite3"
+
+    def stop(_):
+        raise KeyboardInterrupt
+
+    twitch = mocked_client(stop)
     with closing(Database(path)) as db, twitch.http:
         seed(db)
-        monkeypatch.setattr(db, "record_clip", lambda *args: False)
-        Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW).discover(APPROVED_GAME_ID)
-        assert checkpoint(db) == to_utc_iso(STALLED)
-        assert len(requests) == 20
-        assert list(dict.fromkeys(requests)) == [
-            (STALLED, STALLED + 5 * MINUTE),
-            (STALLED, STALLED + 2 * MINUTE),
-        ]
+        with pytest.raises(KeyboardInterrupt):
+            Collector(db, twitch, clock=lambda: NOW).discover(APPROVED_GAME_ID)
+        assert scan_progress(db.connection, APPROVED_GAME_ID) == (None, None)
+        assert not attempts(db)
+        run = db.connection.execute("SELECT max(run_id) FROM collection_runs").fetchone()[0]
+
+    twitch = mocked_client(lambda _: response())
+    with closing(Database(path)) as db, twitch.http:
+        Collector(db, twitch, clock=lambda: NOW).discover(APPROVED_GAME_ID)
         assert (
             db.connection.execute(
-                "SELECT COUNT(*) FROM collection_runs WHERE request_count=0"
+                "SELECT status FROM collection_runs WHERE run_id=?", (run,)
             ).fetchone()[0]
-            == 0
+            == "error"
         )
-
-    requests.clear()
-    twitch = mocked_client(handler)
-    with closing(Database(path)) as db, twitch.http:
-        monkeypatch.setattr(db, "record_clip", lambda *args: False)
-        collector = Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW + 5 * MINUTE)
-        collector.discover(APPROVED_GAME_ID)
-        assert requests[0] == (STALLED, STALLED + MINUTE)
-        assert len(requests) <= 20
-        if progresses:
-            assert checkpoint(db) == to_utc_iso(STALLED + 3 * MINUTE)
-        else:
-            assert checkpoint(db) == to_utc_iso(STALLED)
-            assert set(requests) == {(STALLED, STALLED + MINUTE)}
-            assert (
-                db.connection.execute(
-                    "SELECT status FROM collection_runs ORDER BY run_id DESC LIMIT 1"
-                ).fetchone()[0]
-                == "partial"
-            )
+        assert scan_progress(db.connection, APPROVED_GAME_ID)[0] == NOW
+        with closing(_open_read_only(path)) as read:
+            _check_schema(read)
+            assert read.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
-def test_restart_reuses_completed_prefix_after_budget_runs_out_mid_pagination(
-    tmp_path, monkeypatch
-):
-    path = tmp_path / "gta-vi.sqlite3"
-    requested = []
-
-    def handler(request):
-        start, end = window(request)
-        requested.append((start, end))
-        return paged_response(request, 140 * ((end - start) // MINUTE))
-
-    twitch = mocked_client(handler)
-    with closing(Database(path)) as db, twitch.http:
-        seed(db)
-        monkeypatch.setattr(db, "record_clip", lambda *args: False)
-        Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW).discover(APPROVED_GAME_ID)
-        assert len(requested) == 20
-        assert checkpoint(db) == to_utc_iso(STALLED + 10 * MINUTE)
-        last = db.connection.execute(
-            "SELECT status, pages_seen FROM collection_runs ORDER BY run_id DESC LIMIT 1"
-        ).fetchone()
-        assert tuple(last) == ("partial", 4)
-
-    requested.clear()
-    twitch = mocked_client(handler)
-    with closing(Database(path)) as db, twitch.http:
-        monkeypatch.setattr(db, "record_clip", lambda *args: False)
-        Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW + 5 * MINUTE).discover(
-            APPROVED_GAME_ID
-        )
-        assert requested[0] == (STALLED + 10 * MINUTE, STALLED + 12 * MINUTE)
-        assert checkpoint(db) > to_utc_iso(STALLED + 10 * MINUTE)
-
-
-@pytest.mark.parametrize("failure", ["rate_limit", "timeout"])
-def test_error_keeps_completed_prefix_and_retries_first_gap(tmp_path, failure):
-    frontier = NOW - 10 * MINUTE
-    later = frontier + 5 * MINUTE
-    failing = True
-    requests = []
-    waits = []
-
-    def handler(request):
-        start, _ = window(request)
-        requests.append(start)
-        if failing and start == later:
-            if failure == "rate_limit":
-                return httpx.Response(429, headers={"Retry-After": "2"})
-            raise httpx.ReadTimeout("synthetic timeout", request=request)
-        return response()
-
-    twitch = mocked_client(handler, sleep=waits.append)
-    twitch.max_retries = 1
-    with closing(Database(tmp_path / "gta-vi.sqlite3")) as db, twitch.http:
-        seed(db, frontier)
-        collector = Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW)
-        with pytest.raises(TwitchAPIError):
-            collector.discover(APPROVED_GAME_ID)
-        assert checkpoint(db) == to_utc_iso(later)
-        assert requests == [frontier, later, later]
-        assert waits == ([2] if failure == "rate_limit" else [1])
-        run = db.connection.execute(
-            "SELECT status, pages_seen FROM collection_runs ORDER BY run_id DESC LIMIT 1"
-        ).fetchone()
-        assert tuple(run) == ("error", 0)
-        requests.clear()
-        failing = False
-        collector.discover(APPROVED_GAME_ID)
-        assert requests[0] == later
-        assert checkpoint(db) == to_utc_iso(NOW)
-
-
-def test_legacy_seed_and_disconnected_completed_window_do_not_hide_gap(tmp_path):
-    start = NOW - 10 * MINUTE
-    legacy_checkpoint = start + 5 * MINUTE
-    gap = start + MINUTE
-    windows = []
-
-    def handler(request):
-        windows.append(window(request))
-        if windows[-1][0] == gap:
-            return httpx.Response(400)
-        return response()
-
-    twitch = mocked_client(handler)
-    with closing(Database(tmp_path / "gta-vi.sqlite3")) as db, twitch.http:
-        db.upsert_game(APPROVED_GAME_ID, "Grand Theft Auto VI", start)
-        db.update_watermark(APPROVED_GAME_ID, legacy_checkpoint)
-        parent = db.create_run(APPROVED_GAME_ID, start, NOW, NOW)
-        db.finish_run(parent, NOW, 10, 10, 900, 0, truncated=True)
-        prefix = db.create_run(APPROVED_GAME_ID, start, gap, NOW)
-        db.finish_run(prefix, NOW, 1, 1, 0, 0)
-        suffix = db.create_run(APPROVED_GAME_ID, legacy_checkpoint - MINUTE, legacy_checkpoint, NOW)
-        db.finish_run(suffix, NOW, 1, 1, 0, 0)
-        with pytest.raises(TwitchAPIError):
-            Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW).discover(APPROVED_GAME_ID)
-        assert windows == [(gap, gap + 5 * MINUTE)]
-        assert checkpoint(db) == to_utc_iso(legacy_checkpoint)
-
-
-def test_first_window_error_survives_restart_without_a_seeded_checkpoint(tmp_path):
-    path = tmp_path / "gta-vi.sqlite3"
-    start = NOW - 10 * MINUTE
-    twitch = mocked_client(lambda _: httpx.Response(400))
-    with closing(Database(path)) as db, twitch.http:
-        db.upsert_game(APPROVED_GAME_ID, "Grand Theft Auto VI", NOW)
-        with pytest.raises(TwitchAPIError):
-            Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW).discover(APPROVED_GAME_ID)
-        assert checkpoint(db) is None
-
-    windows = []
-
-    def handler(request):
-        windows.append(window(request))
-        return response()
-
-    twitch = mocked_client(handler)
-    with closing(Database(path)) as db, twitch.http:
-        later = NOW + 5 * MINUTE
-        Collector(db, twitch, lookback_minutes=10, clock=lambda: later).discover(APPROVED_GAME_ID)
-        assert windows[0][0] == start
-        assert checkpoint(db) == to_utc_iso(later)
-
-
-def test_shared_boundary_deduplicates_clip_and_preserves_first_seen(tmp_path):
-    frontier = NOW - 10 * MINUTE
-    boundary = frontier + 5 * MINUTE
-    windows = []
-
-    def handler(request):
-        start, end = window(request)
-        windows.append((start, end))
-        return response([clip(created_at=boundary)] if start <= boundary <= end else [])
-
-    twitch = mocked_client(handler)
-    with closing(Database(tmp_path / "gta-vi.sqlite3")) as db, twitch.http:
-        seed(db, frontier)
-        collector = Collector(db, twitch, lookback_minutes=10, clock=lambda: NOW)
-        assert collector.discover(APPROVED_GAME_ID) == 1
-        assert windows[:2] == [(frontier, boundary), (boundary, NOW)]
-        assert db.connection.execute("SELECT first_seen_at FROM clips").fetchall()[0][
-            0
-        ] == to_utc_iso(NOW)
-        assert db.connection.execute("SELECT COUNT(*) FROM clips").fetchone()[0] == 1
-        assert db.connection.execute("SELECT COUNT(*) FROM jobs").fetchone()[0] == 5
-
-
-def test_due_jobs_keep_priority_before_and_between_discovery_pages(tmp_path):
+def test_due_observations_precede_discovery_pages(tmp_path):
     now = NOW
-    frontier = NOW - 5 * MINUTE
     calls = []
-    created_first = NOW - timedelta(minutes=11)
-    created_second = NOW - timedelta(minutes=10) + timedelta(seconds=1)
+    made = {
+        "due": NOW - timedelta(minutes=11),
+        "later": NOW - timedelta(minutes=10) + timedelta(seconds=1),
+    }
 
     def handler(request):
         nonlocal now
-        params = request.url.params
-        if "id" in params:
-            name = params["id"]
+        if "id" in request.url.params:
+            name = request.url.params["id"]
             calls.append(name)
-            created = created_first if name == "initial-due" else created_second
-            return response([clip(name, created_at=created)])
-        if window(request)[0] != frontier:
+            return response([clip(name, created_at=made[name])])
+        if window(request)[0] != bucket_start(NOW):
             return response()
-        if "after" in params:
+        if "after" in request.url.params:
             calls.append("page-2")
             return response()
         calls.append("page-1")
         now += timedelta(seconds=2)
-        return response(cursor="more")
+        return response([clip("fresh", created_at=bucket_start(NOW))], "more")
 
     twitch = mocked_client(handler)
-    with closing(Database(tmp_path / "gta-vi.sqlite3")) as db, twitch.http:
-        seed(db, frontier)
-        for name, created in (("initial-due", created_first), ("became-due", created_second)):
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        for name, created in made.items():
             db.record_clip(
                 Collector._parse_clip(clip(name, created_at=created)),
                 APPROVED_GAME_ID,
                 created,
                 None,
             )
-        Collector(db, twitch, lookback_minutes=10, clock=lambda: now).discover(APPROVED_GAME_ID)
-        assert calls == ["initial-due", "page-1", "became-due", "page-2"]
+        Collector(db, twitch, clock=lambda: now).discover(APPROVED_GAME_ID)
+        assert calls == ["due", "page-1", "later", "page-2"]
         assert (
-            db.connection.execute("SELECT COUNT(*) FROM jobs WHERE status='completed'").fetchone()[
+            db.connection.execute("SELECT count(*) FROM jobs WHERE status='completed'").fetchone()[
                 0
             ]
             == 2
@@ -383,6 +402,12 @@ def test_gta_v_keeps_existing_catch_up_window_and_overlap(tmp_path):
         db.update_watermark("32982", STALLED)
         Collector(db, twitch, clock=lambda: NOW).discover("32982")
         assert windows == [(STALLED - 5 * MINUTE, NOW)]
+        assert (
+            db.connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='gta_vi_scan_attempts'"
+            ).fetchone()
+            is None
+        )
 
 
 def test_gta_v_recursive_split_keeps_checkpoint_when_a_child_is_incomplete(tmp_path, monkeypatch):
