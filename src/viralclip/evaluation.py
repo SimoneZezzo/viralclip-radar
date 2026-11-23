@@ -16,7 +16,7 @@ from statistics import mean
 from viralclip.dataset import CUTOFFS, FEATURES, HORIZON, TOLERANCE, ignored_output, write_json
 from viralclip.storage.database import parse_utc, to_utc_iso
 
-VERSION = "2b.1"
+VERSION = "2b.2"
 MATURITY = HORIZON + TOLERANCE
 DAY = timedelta(days=1)
 MIN_DAYS = 2
@@ -53,6 +53,7 @@ class SourceWindow:
     end: datetime
     watermark: datetime
     games: tuple[str, ...]
+    outages: tuple[tuple[datetime, datetime], ...] = ()
 
 
 @dataclass
@@ -87,26 +88,39 @@ def _candidate(row: dict[str, str], window: SourceWindow) -> Candidate:
         raise ValueError("Candidate outside its declared cohort or prediction window")
     scores = (None,) * len(BASELINES)
     if status == "eligible":
-        if not (
-            created
-            <= parse_utc(row["first_observed_at"])
-            <= parse_utc(row["latest_observed_at"])
-            <= prediction
-        ):
+        first = parse_utc(row["first_observed_at"])
+        latest = parse_utc(row["latest_observed_at"])
+        if not created <= first <= latest <= prediction:
             raise ValueError("Feature observation falls outside its prediction window")
-        age = float(row["latest_observation_age_seconds"])
-        if (
-            not isfinite(age)
-            or age != (parse_utc(row["latest_observed_at"]) - created).total_seconds()
-        ):
+        age = (latest - created).total_seconds()
+        if float(row["latest_observation_age_seconds"]) != age:
             raise ValueError("Invalid feature observation age")
+        observation_ids = tuple(int(value) for value in row["observation_ids"].split("|"))
+        if (
+            len(set(observation_ids)) != len(observation_ids)
+            or min(observation_ids) < 1
+            or len(observation_ids) != int(row["observation_count"])
+            or (len(observation_ids) == 1) != (first == latest)
+        ):
+            raise ValueError("Invalid feature observation provenance")
+        first_views = int(row["first_views"])
         views = int(row["latest_views"])
         growth, rate = (
             float(row[name]) if row[name] else None
             for name in ("observed_view_growth", "growth_views_per_minute")
         )
-        if views < 0 or any(score is not None and not isfinite(score) for score in (growth, rate)):
+        if min(first_views, views) < 0 or any(
+            score is not None and not isfinite(score) for score in (growth, rate)
+        ):
             raise ValueError("Invalid baseline feature score")
+        expected = (None, None)
+        if latest > first:
+            expected = (
+                views - first_views,
+                60 * (views - first_views) / (latest - first).total_seconds(),
+            )
+        if (growth, rate) != expected or (latest == first and views != first_views):
+            raise ValueError("Baseline growth disagrees with its observations")
         scores = (views, growth, rate, views / max(age / 60, 1))
     return Candidate(
         row["clip_id"], row["game_id"], created, cutoff, status, row["observation_ids"], scores
@@ -178,7 +192,6 @@ def read_inputs(directories: list[Path]) -> Inputs:
         )
         if window.start >= window.end:
             raise ValueError("Invalid dataset creation interval")
-        inputs.windows.append(window)
         inputs.fingerprints.append(
             {
                 "path": str(directory),
@@ -188,11 +201,13 @@ def read_inputs(directories: list[Path]) -> Inputs:
                 "watermark": to_utc_iso(window.watermark),
             }
         )
+        outages = []
         for outage in json.loads(contents["coverage.json"])["outages"]:
             start, end = parse_utc(outage["start"]), parse_utc(outage["end"])
             if start >= end:
                 raise ValueError("Invalid declared outage interval")
             inputs.outages.add((start, end))
+            outages.append((start, end))
 
         local: dict[tuple[str, int], Candidate] = {}
         for row in _csv(contents["candidates.csv"]):
@@ -216,6 +231,10 @@ def read_inputs(directories: list[Path]) -> Inputs:
                 candidate_times[key] = window.watermark
 
         local_ids = {i for i, _ in local}
+        games = window.games or tuple(sorted({row.game_id for row in local.values()}))
+        inputs.windows.append(
+            SourceWindow(window.start, window.end, window.watermark, games, tuple(outages))
+        )
         outcomes = _csv(contents["outcomes.csv"])
         if (
             len(local) != len(local_ids) * len(CUTOFFS)
@@ -298,10 +317,15 @@ def _dcg(values: list[int]) -> float:
 def _day_is_covered(
     day: datetime, game: str, windows: list[SourceWindow], deadline: datetime | None
 ) -> bool:
+    windows = [window for window in windows if game in window.games]
+    if any(
+        start < day + DAY + MATURITY and end > day
+        for window in windows
+        for start, end in window.outages
+    ):
+        return False
     cursor = day
     for window in sorted(windows, key=lambda w: w.start):
-        if window.games and game not in window.games:
-            continue
         if window.start > cursor:
             return False
         watermark = min(window.watermark, deadline) if deadline is not None else window.watermark
@@ -377,6 +401,10 @@ def _period(
         "covered_mature_creation_days": sorted({day.date().isoformat() for _, day in covered_days}),
         "rankable_creation_days": sorted({day.date().isoformat() for _, day in rankable}),
         "rankable_game_day_pools": len(rankable),
+        "rankable_creation_days_by_game": {
+            game: sorted(day.date().isoformat() for key, day in rankable if key == game)
+            for game in sorted({key for key, _ in all_games_days})
+        },
         "matched_labeled_clips": len(matched),
         "by_cutoff_minutes": counts,
     }
@@ -386,7 +414,9 @@ def _period(
 def _outage_exposed(row: Candidate, inputs: Inputs) -> bool:
     return any(
         row.created < end and row.created + timedelta(minutes=row.cutoff) > start
-        for start, end in inputs.outages
+        for window in inputs.windows
+        if row.game_id in window.games
+        for start, end in window.outages
     )
 
 
@@ -473,15 +503,23 @@ def evaluate(
     ):
         raise ValueError("Supply both boundaries as increasing UTC midnights")
     rows = list(inputs.candidates.values())
+    games = sorted(
+        {row.game_id for row in rows} | {game for w in inputs.windows for game in w.games}
+    )
     overall = _period(rows, inputs, None)[0]
     periods = {}
     metrics = {}
     reasons = []
     if validation_start is None:
-        if len(overall["rankable_creation_days"]) < 3 * MIN_DAYS:
-            reasons.append(
-                f"Need at least {3 * MIN_DAYS} rankable mature UTC creation days before split embargoes"
-            )
+        days = overall["rankable_creation_days_by_game"]
+        reasons.extend(
+            f"Game {game} needs at least {3 * MIN_DAYS} rankable mature UTC days before embargoes"
+            for game in games
+            if len(days.get(game, ())) < 3 * MIN_DAYS
+        )
+        if not games:
+            reasons.append("No game cohorts are present")
+        if reasons:
             status = "INSUFFICIENT DATA"
         else:
             reasons.append("Predeclare validation and test start dates")
@@ -497,11 +535,15 @@ def evaluate(
             "test": _period([r for r in rows if r.created >= test_start], inputs, None),
         }
         for name, period in periods.items():
-            n = len(period[0]["rankable_creation_days"])
-            if n < MIN_DAYS:
-                reasons.append(
-                    f"{name} has {n} rankable mature UTC days after embargo; needs {MIN_DAYS}"
-                )
+            days = period[0]["rankable_creation_days_by_game"]
+            for game in games:
+                n = len(days.get(game, ()))
+                if n < MIN_DAYS:
+                    reasons.append(
+                        f"{name}, game {game} has {n} rankable mature UTC days after embargo; needs {MIN_DAYS}"
+                    )
+        if not games:
+            reasons.append("No game cohorts are present")
         status = "INSUFFICIENT DATA" if reasons else "EVALUATED"
         if not reasons:
             metrics = {name: _scores(periods[name], inputs, k) for name in ("validation", "test")}
@@ -521,6 +563,21 @@ def evaluate(
             {"start": to_utc_iso(start), "end": to_utc_iso(end)}
             for start, end in sorted(inputs.outages)
         ],
+        "declared_outages_by_game": {
+            game: [
+                {"start": to_utc_iso(start), "end": to_utc_iso(end)}
+                for start, end in sorted(
+                    {
+                        outage
+                        for window in inputs.windows
+                        if game in window.games
+                        for outage in window.outages
+                    }
+                )
+            ]
+            for game in games
+        },
+        "coverage_basis": "Declared extraction windows and outages. Discovery admission requires the M2 audit.",
     }
 
 

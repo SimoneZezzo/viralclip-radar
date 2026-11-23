@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import subprocess
 from datetime import timedelta
@@ -45,7 +46,7 @@ def examples(start=START, end=START + 10 * DAY):
     return Inputs({}, {}, {}, [SourceWindow(start, end, end + MATURITY, ("42",))], set(), [], 0, 0)
 
 
-def add_clip(inputs, clip_id, created, views, *, late=False, sparse=False):
+def add_clip(inputs, clip_id, created, views, *, late=False, sparse=False, game="42"):
     inputs.outcomes[clip_id] = Outcome("valid", views, created + DAY)
     inputs.broadcasters[clip_id] = str(int(views) % 2)
     inputs.input_outcomes += 1
@@ -54,7 +55,7 @@ def add_clip(inputs, clip_id, created, views, *, late=False, sparse=False):
         scores = (views, None if sparse else views, None if sparse else views, views / 5)
         inputs.candidates[clip_id, cutoff] = Candidate(
             clip_id,
-            "42",
+            game,
             created,
             cutoff,
             "eligible" if eligible else "late_discovery",
@@ -76,14 +77,13 @@ def test_chronological_evaluation_scores_cutoff_and_matched_pools():
                 late=i == 10,
                 sparse=i == 9,
             )
-    inputs.outages.add((START + 4 * DAY, START + 4 * DAY + timedelta(minutes=3)))
     report = evaluate(inputs, START + 4 * DAY, START + 8 * DAY, 1)
     assert report["status"] == "EVALUATED"
     assert [p["unique_clips"] for p in report["periods"].values()] == [44, 44, 22]
     valid = report["periods"]["validation"]
     assert len(valid["rankable_creation_days"]) == 2
     assert valid["by_cutoff_minutes"][30]["embargoed_valid_outcomes"] == 10
-    assert valid["by_cutoff_minutes"][30]["outage_exposed_candidates"] == 3
+    assert valid["by_cutoff_minutes"][30]["outage_exposed_candidates"] == 0
     assert valid["by_cutoff_minutes"][30]["missing_scores_among_eligible"]["growth_rate"] == 4
     assert (
         valid["by_cutoff_minutes"][30]["matched_population"]["broadcaster_concentration"][
@@ -114,6 +114,37 @@ def test_embargo_requires_full_label_window_even_for_already_observed_labels():
     assert train["label_status_among_eligible"] == {"valid": 1, "embargoed_at_period_boundary": 1}
     assert train["eligible_with_label"] == 1
     assert not report["metrics"]
+
+
+def test_sparse_game_cannot_borrow_rankable_days_from_other_game():
+    inputs = examples()
+    inputs.windows.append(
+        SourceWindow(START, START + 10 * DAY, START + 10 * DAY + MATURITY, ("43",))
+    )
+    for offset in range(10):
+        for number in range(10):
+            created = START + offset * DAY + timedelta(minutes=number)
+            add_clip(inputs, f"42-{offset}-{number}", created, number)
+            if offset in (0, 4, 8):
+                add_clip(inputs, f"43-{offset}-{number}", created, number, game="43")
+    report = evaluate(inputs, START + 4 * DAY, START + 8 * DAY, 1)
+    assert report["status"] == "INSUFFICIENT DATA"
+    assert not report["metrics"]
+    assert len(report["reasons"]) == 3 and all("game 43" in reason for reason in report["reasons"])
+
+
+def test_outage_during_outcome_excludes_only_affected_game_day():
+    inputs = examples()
+    outage = START + DAY, START + DAY + timedelta(minutes=1)
+    inputs.windows.append(
+        SourceWindow(START, START + 10 * DAY, START + 10 * DAY + MATURITY, ("43",), (outage,))
+    )
+    for number in range(10):
+        add_clip(inputs, f"42-{number}", START, number)
+        add_clip(inputs, f"43-{number}", START, number, game="43")
+    overall = evaluate(inputs, None, None, 1)["overall"]
+    assert overall["rankable_creation_days_by_game"] == {"42": [START.date().isoformat()], "43": []}
+    assert overall["matched_labeled_clips"] == 20
 
 
 def test_several_partial_intervals_on_one_day_do_not_create_independent_days():
@@ -166,6 +197,27 @@ def replays(tmp_path, monkeypatch):
     extract(db.path, selection, left)
     extract(db.path, selection, right)
     return left, right
+
+
+def test_self_consistent_csv_hash_cannot_authorize_fabricated_growth(replays):
+    left, _ = replays
+    path = left / "candidates.csv"
+    with path.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        fields = reader.fieldnames
+        rows = list(reader)
+    rows[0]["observed_view_growth"] = "42"
+    rows[0]["growth_views_per_minute"] = "42"
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    manifest_path = left / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sha256"][path.name] = sha256(path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="Baseline growth disagrees"):
+        read_inputs([left])
 
 
 def test_overlap_deduplicates_and_report_manifest_is_reproducible(replays, monkeypatch, capsys):
