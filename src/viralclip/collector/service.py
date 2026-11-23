@@ -5,7 +5,7 @@ import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
-from viralclip.config import GTA_VI_OVERLAP_PAGES, GtaViOverlap
+from viralclip.config import DEFAULT_GTA_VI_OVERLAP, GTA_VI_OVERLAP_PAGES, GtaViOverlap
 from viralclip.storage.database import Database, to_utc_iso, utc_now
 from viralclip.storage.discovery import (
     BUCKET,
@@ -35,7 +35,7 @@ class Collector:
         lookback_minutes: int = 30,
         clock: Callable[[], datetime] = utc_now,
         monotonic: Callable[[], float] = time.monotonic,
-        gta_vi_overlap: GtaViOverlap = GtaViOverlap(),
+        gta_vi_overlap: GtaViOverlap = DEFAULT_GTA_VI_OVERLAP,
     ):
         self.database = database
         self.twitch = twitch

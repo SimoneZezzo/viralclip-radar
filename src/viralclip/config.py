@@ -19,6 +19,9 @@ class GtaViOverlap:
             raise ValueError("GTA VI overlap needs 7–10 pages and a 1–30 second extra-page budget")
 
 
+DEFAULT_GTA_VI_OVERLAP = GtaViOverlap()
+
+
 @dataclass(frozen=True)
 class Settings:
     client_id: str | None
@@ -29,7 +32,7 @@ class Settings:
     games: tuple[str, ...]
     game_ids: tuple[str, ...]
     http_log_directory: str | None = None
-    gta_vi_overlap: GtaViOverlap = GtaViOverlap()
+    gta_vi_overlap: GtaViOverlap = DEFAULT_GTA_VI_OVERLAP
 
     @property
     def has_twitch_credentials(self) -> bool:
@@ -66,6 +69,8 @@ def load_settings() -> Settings:
         http_log_directory=os.getenv("VIRALCLIP_HTTP_LOG_DIR") or None,
         gta_vi_overlap=GtaViOverlap(
             _positive_int("VIRALCLIP_GTA_VI_OVERLAP_PAGES", GTA_VI_OVERLAP_PAGES),
-            _positive_int("VIRALCLIP_GTA_VI_EXTRA_PAGE_SECONDS", GtaViOverlap().extra_seconds),
+            _positive_int(
+                "VIRALCLIP_GTA_VI_EXTRA_PAGE_SECONDS", DEFAULT_GTA_VI_OVERLAP.extra_seconds
+            ),
         ),
     )
