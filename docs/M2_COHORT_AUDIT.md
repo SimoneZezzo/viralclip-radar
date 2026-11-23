@@ -88,15 +88,21 @@ le directory di stato. Landlock ABI ≥3 è richiesto su Linux prima di aprire
 i DB, con le restrizioni del runbook. Seguono URI `mode=ro`, `query_only`,
 transazione e cache limitata. In assenza di JSON, l'audit è `UNKNOWN`.
 Aggiungere al comando le altre interruzioni verificate nel preflight.
+Usare la revisione verificata del runtime installato per gli hash dei
+moduli di supporto. Durante l'audit del 23 novembre il runtime era
+`4ab8d05f1ca1` e l'evaluator locale aveva già una revisione successiva.
 
 ```powershell
 $target = Read-Host 'Alias SSH autorizzato'
 if ($target -cnotmatch '^(?:[A-Za-z_][A-Za-z0-9_.-]*@)?[A-Za-z0-9][A-Za-z0-9.-]*$') {
     throw 'Alias SSH non valido'
 }
-function Get-M2SourceHash([string] $sourcePath) {
-    $sourceText = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $sourcePath).Path)
-    $normalized = [Text.Encoding]::UTF8.GetBytes($sourceText.Replace("`r`n", "`n"))
+$m2RuntimeRevision = Read-Host 'Revisione del runtime verificata nel preflight'
+if ($m2RuntimeRevision -cnotmatch '^[0-9a-f]{12,40}$') { throw 'Revisione non valida' }
+function Get-M2RuntimeModuleHash([string] $module) {
+    $source = git --no-pager show "${m2RuntimeRevision}:src/viralclip/$module.py"
+    if ($LASTEXITCODE -ne 0) { throw "Modulo di supporto non trovato: $module" }
+    $normalized = [Text.Encoding]::UTF8.GetBytes(($source -join [char]10) + [char]10)
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
         return ([BitConverter]::ToString($sha.ComputeHash($normalized))).Replace('-', '').ToLowerInvariant()
@@ -104,8 +110,8 @@ function Get-M2SourceHash([string] $sourcePath) {
         $sha.Dispose()
     }
 }
-$datasetHash = Get-M2SourceHash '.\src\viralclip\dataset.py'
-$evaluationHash = Get-M2SourceHash '.\src\viralclip\evaluation.py'
+$datasetHash = Get-M2RuntimeModuleHash 'dataset'
+$evaluationHash = Get-M2RuntimeModuleHash 'evaluation'
 $command = @(
     'sudo -n -- timeout 45s nice -n 10 /opt/viralclip-gta-vi/.venv/bin/python -I -B -'
     '--gta-v /var/lib/viralclip-radar/viralclip.sqlite3'
