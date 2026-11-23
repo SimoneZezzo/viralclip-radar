@@ -79,7 +79,17 @@ class Fixture:
     def stamp(self, at):
         self.clip("PRIVATE_WATERMARK_CLIP", at, seen=0, early=(0,), result="missing")
 
-    def run(self, start, end, kind="completed", lane=None, outcome=None, finished=None):
+    def run(
+        self,
+        start,
+        end,
+        kind="completed",
+        lane=None,
+        outcome=None,
+        finished=None,
+        *,
+        known_omissions=(),
+    ):
         cursor = self.db.execute(
             """
             INSERT INTO collection_runs(game_id,window_start,window_end,started_at,finished_at,
@@ -107,6 +117,28 @@ class Fixture:
             )
             self.db.execute(
                 "INSERT INTO gta_vi_scan_attempts VALUES(?,?,?)", (cursor.lastrowid, lane, outcome)
+            )
+        elif kind == "completed":
+            at = finished or end
+            known = self.db.execute(
+                """SELECT clip_id,created_at FROM clips
+                   WHERE game_id=? AND created_at>=? AND created_at<? AND first_seen_at<=?""",
+                (self.game, to_utc_iso(start), to_utc_iso(end), to_utc_iso(end)),
+            )
+            self.db.executemany(
+                """INSERT OR IGNORE INTO clip_snapshots(
+                   clip_id,observed_at,age_seconds,view_count,source,collection_run_id)
+                   VALUES(?,?,?,0,'discovery',?)""",
+                (
+                    (
+                        cid,
+                        to_utc_iso(at),
+                        (at - datetime.fromisoformat(created)).total_seconds(),
+                        cursor.lastrowid,
+                    )
+                    for cid, created in known
+                    if cid not in known_omissions
+                ),
             )
 
     def pool(self, offset, count=10):
@@ -191,7 +223,7 @@ def test_independent_games_use_common_watermark_and_keep_empty_days(pair):
         assert result["individual_watermark"] == to_utc_iso(START + stamp * DAY)
         assert result["admissible_days"] == 1
         assert result["days"][offset]["admissible"]
-        assert result["days"][offset]["observations"] == 20
+        assert result["days"][offset]["observations"] == 30
         assert result["decision"] == "PARTIAL"
         assert result["splits"]["software"]["feasible_boundary_pairs"] == 0
         assert result["days"][2]["clips"] == 0
@@ -215,6 +247,7 @@ def test_readiness_requests_audit_only_for_possible_mature_legacy_splits(pair):
     process, report = cli(v.path, vi.path, *args, "--quality-day", "2025-11-01")
     assert process.returncode == 0
     assert report["mode"] == "readiness"
+    assert report["discovery_policy"] == "legacy-search-day-v2"
     assert report["common_watermark"] == to_utc_iso(START + 12 * DAY)
     left, right = (report["games"][name] for name in ("gta-v", "gta-vi"))
     assert left["calendar_candidates"] == 6
@@ -366,6 +399,38 @@ def test_coverage_union_outages_and_structural_lanes(pair):
         "retry": {"known_incomplete": 1},
     }
     assert vi_result["discovery"]["twitch_population_completeness"] == "UNKNOWN"
+
+
+def test_legacy_completion_with_known_omission_loses_coverage_until_verified_overlap(pair):
+    v, vi = pair
+    end = START + DAY
+    v.clip("PRIVATE_OMITTED", START + 40 * MINUTE)
+    v.clip("PRIVATE_RECOVERED", START + 50 * MINUTE)
+    v.clip("PRIVATE_LATER", end - MINUTE, seen=2)
+    v.run(START, end, known_omissions=("PRIVATE_OMITTED",))
+
+    def evidence():
+        days, _ = m2_audit.discovery(
+            v.db, v.game, START, end, end + 10 * MINUTE, time.monotonic() + 5
+        )
+        return days[START].report()
+
+    incomplete = evidence()
+    assert incomplete["legacy_success_seconds"] == 0
+    assert incomplete["seconds_by_evidence"]["legacy_known_incomplete"] == 86400
+    assert incomplete["unresolved_problem_seconds"] == 86400
+    assert m2_audit.discovery_exclusions(incomplete) == [
+        "unresolved_discovery_problem",
+        "insufficient_discovery_coverage_evidence",
+    ]
+
+    v.run(START, end, finished=end + 2 * MINUTE)
+    recovered = evidence()
+    assert recovered["attempted_seconds"] == recovered["legacy_success_seconds"] == 86400
+    assert recovered["unresolved_problem_seconds"] == 0
+    assert m2_audit.discovery_exclusions(recovered) == []
+    v.close()
+    vi.close()
 
 
 def test_full_workflow_go_is_per_game_and_uses_whole_day_embargo(pair):

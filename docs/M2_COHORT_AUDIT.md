@@ -42,10 +42,17 @@ Feature e label riusano le funzioni di [dataset.py](../src/viralclip/dataset.py)
   diverso da `error`. Considerare entrambi entro l'intervallo dell'audit.
 - Il criterio per il benchmark principale richiede 86.400 secondi di finestre
   legacy completate con almeno una richiesta e senza errore o troncamento.
-  I successi possono risolvere un errore precedente sugli stessi secondi.
+  Dalla policy `legacy-search-day-v2`, ogni clip della categoria e della
+  finestra nota all'inizio del run deve avere una misura di discovery
+  collegata a quel run, tra inizio e fine. `legacy_known_incomplete`
+  segnala le finestre legacy con omissioni verificabili. Un altro run
+  verificato può recuperare i secondi sovrapposti.
   `known_incomplete` rimane esplicito anche quando si sovrappone a un successo
   legacy. I giorni GTA VI sostenuti solo dal nuovo ledger restano esclusi
   dal benchmark principale finché manca un criterio approvato per ammetterli.
+- Gli export con attestazione `legacy-search-day-v1` rimangono leggibili
+  per l'analisi di sensibilità. Il primario richiede la verifica v2 e un
+  export con la nuova attestazione legata ai suoi hash.
 - Dichiarare gli incidenti verificati con `--outage GAME START END`. Per
   prudenza il giorno viene escluso se un incidente si sovrappone alla sua
   creazione o all'orizzonte massimo di osservazione e maturità.
@@ -54,6 +61,17 @@ Feature e label riusano le funzioni di [dataset.py](../src/viralclip/dataset.py)
   l'embargo. Riporta quante coppie sono fattibili e un esempio per il minimo
   `2/2/2` e per il target `7/3/7` con 500 matched nel test. A zero coppie
   fattibili, l'eventuale esempio mostra il tentativo più vicino al target.
+
+Per ammettere in futuro le finestre strutturali GTA VI serve una prova
+di ricerca separata. Il primo passo è un confronto su una finestra UTC
+futura, con un riferimento indipendente e verificabile degli ID attesi
+per quella categoria e quell'intervallo. Conservare intervallo, fine
+della ricerca, fonte e hash del riferimento, run collegati e risultato
+della riconciliazione. La verifica deve trovare le omissioni note e
+lasciare escluse le finestre con lacune. Solo allora estendere la policy
+con un tipo di evidenza esplicito, mantenendo l'unione di 86.400 secondi
+e i controlli esistenti. Un altro cursore esaurito o il riscontro dei soli
+ID già noti non basta come riferimento indipendente.
 
 `GO` indica che il minimo software è raggiunto per il gioco. `PARTIAL`
 indica evidenza insufficiente per lo scoring. `NO-GO` segnala un errore

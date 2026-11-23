@@ -232,10 +232,12 @@ def test_primary_discovery_evidence_is_bound_to_the_export_that_supplied_rows(
         db = Database(tmp_path / f"{name}.sqlite3")
         try:
             db.upsert_game("42", "Synthetic", START)
+            parsed = Collector._parse_clip(clip(name, created_at=START))
+            db.record_clip(parsed, "42", START, None)
             if covered:
                 run = db.create_run("42", START, START + DAY, START + DAY)
-                db.finish_run(run, START + DAY, 1, 1, 0, 0)
-            db.record_clip(Collector._parse_clip(clip(name, created_at=START)), "42", START, None)
+                db.record_clip(parsed, "42", START + DAY, run)
+                db.finish_run(run, START + DAY, 1, 1, 1, 0)
             job = db.connection.execute(
                 "SELECT job_id FROM jobs WHERE clip_id=? AND target_age_seconds=86400", (name,)
             ).fetchone()[0]
@@ -257,6 +259,17 @@ def test_primary_discovery_evidence_is_bound_to_the_export_that_supplied_rows(
     assert evaluate(inputs, None, None, 10)["overall"]["matched_labeled_clips"] == 2
 
     coverage_path = primary / "coverage.json"
+    coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+    coverage["primary_discovery"]["policy"] = "legacy-search-day-v1"
+    coverage_path.write_text(json.dumps(coverage), encoding="utf-8")
+    manifest_path = primary / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sha256"][coverage_path.name] = sha256(coverage_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    prior = read_inputs([primary, diagnostic])
+    assert prior.primary_clips == set()
+    assert evaluate(prior, None, None, 10)["overall"]["matched_labeled_clips"] == 2
+
     coverage_path.write_text("{}", encoding="utf-8")
     with pytest.raises(ValueError, match="Dataset hash mismatch for coverage.json"):
         read_inputs([primary])

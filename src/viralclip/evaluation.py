@@ -161,24 +161,28 @@ def _outcome(row: dict[str, str], clip: Candidate, watermark: datetime) -> Outco
 
 
 def _primary_days(coverage: dict, window: SourceWindow) -> set[tuple[str, datetime]]:
-    from viralclip.m2_audit import DISCOVERY_POLICY, utc_day
+    from viralclip.m2_audit import DISCOVERY_POLICY, PRIOR_DISCOVERY_POLICY, utc_day
 
     evidence = coverage["primary_discovery"]
-    if evidence["policy"] != DISCOVERY_POLICY or evidence["status"] not in ("VERIFIED", "UNKNOWN"):
+    policy, status = evidence["policy"], evidence["status"]
+    if policy not in (DISCOVERY_POLICY, PRIOR_DISCOVERY_POLICY) or status not in (
+        "VERIFIED",
+        "UNKNOWN",
+    ):
         raise ValueError("Unsupported primary discovery evidence")
     days = set()
     for item in evidence["game_days"]:
         day = utc_day(item["day_utc"])
         game = item["game_id"]
         if (
-            evidence["status"] != "VERIFIED"
+            status != "VERIFIED"
             or game not in window.games
             or not window.start <= day < day + DAY <= min(window.end, window.watermark - MATURITY)
             or (game, day) in days
         ):
             raise ValueError("Invalid primary discovery game/day")
         days.add((game, day))
-    return days
+    return days if policy == DISCOVERY_POLICY else set()
 
 
 def read_inputs(directories: list[Path]) -> Inputs:

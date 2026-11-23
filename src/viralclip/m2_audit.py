@@ -39,7 +39,8 @@ SCAN_OUTCOMES = (
 MAX_DAYS = 366
 MAX_EARLY = 4096
 MAX_DISCOVERY_RUNS = 120_000
-DISCOVERY_POLICY = "legacy-search-day-v1"
+DISCOVERY_POLICY = "legacy-search-day-v2"
+PRIOR_DISCOVERY_POLICY = "legacy-search-day-v1"
 READINESS_DAYS = 30
 DELAY_BOUNDS = tuple(sorted(set(TARGET_AGES_SECONDS) | {60 * m for m in CUTOFFS}))
 LABEL_QUERY = """
@@ -443,7 +444,8 @@ def discovery(
     rows = db.execute(
         f"""
         SELECT r.window_start, r.window_end, r.status, r.potentially_truncated,
-               r.error_summary IS NOT NULL, r.request_count, r.pages_seen, {extra}
+               r.error_summary IS NOT NULL, r.request_count, r.pages_seen, {extra},
+               r.run_id, r.started_at, r.finished_at
         FROM collection_runs r {join}
         WHERE r.game_id=? AND r.finished_at<=? AND r.window_start<? AND r.window_end>?
         ORDER BY r.window_start LIMIT ?
@@ -454,8 +456,21 @@ def discovery(
         check_deadline(deadline)
         if index == MAX_DISCOVERY_RUNS:
             raise AuditError("discovery_run_limit_exceeded")
-        left, right, status, flagged, error, requested, pages, lane, result = row
-        left, right = parse_utc(left), parse_utc(right)
+        (
+            start_at,
+            end_at,
+            status,
+            flagged,
+            error,
+            requested,
+            pages,
+            lane,
+            result,
+            run,
+            began,
+            finished,
+        ) = row
+        left, right = parse_utc(start_at), parse_utc(end_at)
         if left >= right or (status == "scanned" and lane is None):
             raise AuditError("invalid_discovery_window_or_ledger")
         kinds = []
@@ -476,7 +491,23 @@ def discovery(
             if result == "known_incomplete":
                 kinds.append("known_incomplete")
         elif status == "completed" and not flagged and not error and requested > 0:
-            kinds.append("legacy_success")
+            missing_known = db.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 FROM clips c
+                    WHERE c.game_id=? AND c.created_at>=? AND c.created_at<? AND c.first_seen_at<=?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM clip_snapshots s
+                          WHERE s.clip_id=c.clip_id AND s.observed_at BETWEEN ? AND ?
+                            AND s.source='discovery' AND s.collection_run_id=?
+                      )
+                )
+                """,
+                (game, start_at, end_at, began, began, finished, run),
+            ).fetchone()[0]
+            kinds.extend(
+                ("legacy_known_incomplete", "problem") if missing_known else ("legacy_success",)
+            )
         if status == "error" or error:
             kinds.extend(("error", "problem"))
         elif status == "partial" or flagged:
@@ -829,6 +860,7 @@ def run_audit(args: argparse.Namespace) -> dict:
     deadline = time.monotonic() + args.timeout
     payload = {
         "version": 1,
+        "discovery_policy": DISCOVERY_POLICY,
         "sample_started_at": to_utc_iso(started),
         "common_watermark": None,
         "watermark_status": "UNKNOWN",
