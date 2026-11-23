@@ -4,6 +4,14 @@ Last updated 2026-11-21 (Europe/Rome).
 
 ## Current priority
 
+**Bounded GTA VI label retry probe, November 23 at 12:26 UTC.**
+One authenticated by-ID batch recovered 0 of 3 verified omissions
+inside their original label windows. The probe consumed three HTTP
+requests including authentication and kept the collector progressing.
+Retry effectiveness remains inconclusive. The current pipeline and
+M1/M2 gate criteria are unchanged.
+[Probe evidence](docs/PROJECT_HISTORY.md#2026-11-23-bounded-gta-vi-label-retry-probe)
+
 **Production follow-up, November 23 at 11:30 UTC.** Both collectors
 advanced with zero failed jobs and no 429s in the sampled hour.
 GTA VI remains at eight overlap pages. Since the handoff, page eight
