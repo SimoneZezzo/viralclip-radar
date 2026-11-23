@@ -6,6 +6,18 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+GTA_VI_OVERLAP_PAGES = 7
+
+
+@dataclass(frozen=True)
+class GtaViOverlap:
+    pages: int = GTA_VI_OVERLAP_PAGES
+    extra_seconds: int = 15
+
+    def __post_init__(self) -> None:
+        if not GTA_VI_OVERLAP_PAGES <= self.pages <= 10 or not 1 <= self.extra_seconds <= 30:
+            raise ValueError("GTA VI overlap needs 7–10 pages and a 1–30 second extra-page budget")
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -17,6 +29,7 @@ class Settings:
     games: tuple[str, ...]
     game_ids: tuple[str, ...]
     http_log_directory: str | None = None
+    gta_vi_overlap: GtaViOverlap = GtaViOverlap()
 
     @property
     def has_twitch_credentials(self) -> bool:
@@ -51,4 +64,8 @@ def load_settings() -> Settings:
         games=_csv_values("VIRALCLIP_GAMES"),
         game_ids=_csv_values("VIRALCLIP_GAME_IDS"),
         http_log_directory=os.getenv("VIRALCLIP_HTTP_LOG_DIR") or None,
+        gta_vi_overlap=GtaViOverlap(
+            _positive_int("VIRALCLIP_GTA_VI_OVERLAP_PAGES", GTA_VI_OVERLAP_PAGES),
+            _positive_int("VIRALCLIP_GTA_VI_EXTRA_PAGE_SECONDS", GtaViOverlap().extra_seconds),
+        ),
     )

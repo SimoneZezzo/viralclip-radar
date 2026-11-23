@@ -150,7 +150,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         try:
             collector = Collector(
-                database, twitch, lookback_minutes=settings.discovery_lookback_minutes
+                database,
+                twitch,
+                lookback_minutes=settings.discovery_lookback_minutes,
+                gta_vi_overlap=settings.gta_vi_overlap,
             )
             if args.once:
                 collector.collect_cycle(games, game_ids)

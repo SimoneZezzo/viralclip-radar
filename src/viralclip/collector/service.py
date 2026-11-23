@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
+from viralclip.config import GTA_VI_OVERLAP_PAGES, GtaViOverlap
 from viralclip.storage.database import Database, to_utc_iso, utc_now
 from viralclip.storage.discovery import (
     BUCKET,
@@ -11,15 +14,16 @@ from viralclip.storage.discovery import (
     historical_retry,
     history_start,
 )
-from viralclip.twitch.client import TwitchAPIError, TwitchClient
+from viralclip.twitch.client import TwitchAPIError, TwitchClient, TwitchRequestDeferred
 
 GTA_VI_GAME_ID = "1867279146"
 DISCOVERY_BUDGET = 20
 OVERLAP = timedelta(minutes=5)
 GTA_VI_RECENT_PAGES = 10
-GTA_VI_OVERLAP_PAGES = 7
 GTA_VI_HISTORY_PAGES = DISCOVERY_BUDGET - GTA_VI_RECENT_PAGES - GTA_VI_OVERLAP_PAGES
 GTA_VI_RETRY_DELAY = timedelta(minutes=30)
+HELIX_CLIP_RESULT_LIMIT = 1000
+LOG = logging.getLogger(__name__)
 
 
 class Collector:
@@ -30,11 +34,15 @@ class Collector:
         *,
         lookback_minutes: int = 30,
         clock: Callable[[], datetime] = utc_now,
+        monotonic: Callable[[], float] = time.monotonic,
+        gta_vi_overlap: GtaViOverlap = GtaViOverlap(),
     ):
         self.database = database
         self.twitch = twitch
         self.lookback_minutes = lookback_minutes
         self.clock = clock
+        self.monotonic = monotonic
+        self.gta_vi_overlap = gta_vi_overlap
         self.database.acquire_collector_lock()
         self.database.recover_running_jobs()
 
@@ -83,7 +91,14 @@ class Collector:
         count = 0
         if now > current:
             count += self._scan_gta_vi(game_id, current, now, "recent", GTA_VI_RECENT_PAGES)
-        count += self._scan_gta_vi(game_id, previous, current, "recent", GTA_VI_OVERLAP_PAGES)
+        count += self._scan_gta_vi(
+            game_id,
+            previous,
+            current,
+            "recent",
+            GTA_VI_OVERLAP_PAGES,
+            extra_pages=self.gta_vi_overlap.pages - GTA_VI_OVERLAP_PAGES,
+        )
         if frontier < previous:
             end = min(bucket_start(frontier) + BUCKET, previous)
             count += self._scan_gta_vi(game_id, frontier, end, "history", GTA_VI_HISTORY_PAGES)
@@ -94,10 +109,28 @@ class Collector:
         return count
 
     def _scan_gta_vi(
-        self, game_id: str, start: datetime, end: datetime, lane: str, budget: int
+        self,
+        game_id: str,
+        start: datetime,
+        end: datetime,
+        lane: str,
+        budget: int,
+        *,
+        query_window: tuple[datetime, datetime] | None = None,
+        extra_pages: int = 0,
     ) -> int:
+        aligned_start = bucket_start(start)
+        query_start, query_end = query_window or (aligned_start, aligned_start + BUCKET)
+        if (
+            not query_start <= start < end <= query_end
+            or any(
+                stamp.utcoffset() != timedelta(0) or stamp.second or stamp.microsecond
+                for stamp in (query_start, query_end)
+            )
+            or not 0 < budget <= budget + extra_pages <= GTA_VI_RECENT_PAGES
+        ):
+            raise ValueError("Invalid discovery window or page budget")
         run = self.database.create_run(game_id, start, end, self.clock())
-        query_start = bucket_start(start)
         cursor = None
         cursors: set[str] = set()
         wire_ids: set[str] = set()
@@ -120,16 +153,31 @@ class Collector:
             )
 
         try:
-            for _ in range(budget):
+            deadline = None
+            for index in range(budget + extra_pages):
+                if index == budget:
+                    deadline = self.monotonic() + self.gta_vi_overlap.extra_seconds
                 self.collect_due_snapshots()
+                timeout = None if deadline is None else deadline - self.monotonic()
+                if timeout is not None and timeout <= 0:
+                    LOG.warning("GTA VI overlap extra pages stopped at their time budget")
+                    break
                 requested += 1
-                payload = self.twitch.get_clips(
-                    game_id=game_id,
-                    started_at=query_start,
-                    ended_at=query_start + BUCKET,
-                    after=cursor,
-                )
+                try:
+                    payload = self.twitch.get_clips(
+                        game_id=game_id,
+                        started_at=query_start,
+                        ended_at=query_end,
+                        after=cursor,
+                        extra_timeout=timeout,
+                    )
+                except TwitchRequestDeferred:
+                    requested -= 1
+                    LOG.warning("GTA VI overlap extra page deferred for Twitch auth or rate budget")
+                    break
                 page = self.twitch.parse_data(payload)
+                if any(item.get("game_id", game_id) != game_id for item in page):
+                    raise TwitchAPIError("Twitch discovery returned a different game category")
                 pages += 1
                 observed_at = self.clock()
                 raw += len(page)
@@ -144,7 +192,7 @@ class Collector:
                         wire_ids.add(clip_id)
                         new_wire_ids = True
                     created = clip["created_at"]
-                    if not query_start <= created < query_start + BUCKET:
+                    if not query_start <= created < query_end:
                         outside_query = True
                     if start <= created < end:
                         pertinent += 1
@@ -163,11 +211,12 @@ class Collector:
                         """,
                         (game_id, to_utc_iso(start), to_utc_iso(end)),
                     )
-                    outcome = (
-                        "known_incomplete"
-                        if any(row[0] not in unique_ids for row in known)
-                        else "cursor_exhausted"
-                    )
+                    if any(row[0] not in unique_ids for row in known):
+                        outcome = "known_incomplete"
+                    elif raw >= HELIX_CLIP_RESULT_LIMIT:
+                        outcome = "page_limit"
+                    else:
+                        outcome = "cursor_exhausted"
                     break
                 cursors.add(cursor)
         except Exception as exc:

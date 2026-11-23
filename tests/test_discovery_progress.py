@@ -6,6 +6,7 @@ import pytest
 from test_collector import clip, make_client
 
 from viralclip.collector.service import Collector
+from viralclip.config import GtaViOverlap
 from viralclip.deployment import _check_schema, _open_read_only
 from viralclip.gta_vi import APPROVED_GAME_ID
 from viralclip.storage.database import Database, to_utc_iso
@@ -124,6 +125,65 @@ def test_raw_saturation_with_duplicates_does_not_claim_coverage(tmp_path, rows, 
             rows - distinct,
             "partial",
         )
+        assert checkpoint(db) == to_utc_iso(STALLED)
+
+
+def test_saturated_terminal_page_is_still_partial(tmp_path):
+    twitch = mocked_client(lambda request: paged_response(request, 1000, page_size=100))
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        ensure_scan_ledger(db.connection)
+        start = bucket_start(NOW)
+        Collector(db, twitch, clock=lambda: NOW)._scan_gta_vi(
+            APPROVED_GAME_ID, start, NOW, "recent", 10
+        )
+        row = attempts(db)[0]
+        assert row[1] == "page_limit"
+        assert row[4:8] == (10, 1000, 1000, 1000)
+        assert row[-1] == "partial"
+
+
+def test_wrong_category_does_not_write_clips_or_move_frontier(tmp_path):
+    item = clip("wrong-game", created_at=bucket_start(NOW)) | {"game_id": "32982"}
+    twitch = mocked_client(lambda _: response([item]))
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        with pytest.raises(TwitchAPIError, match="different game category"):
+            Collector(db, twitch, clock=lambda: NOW).discover(APPROVED_GAME_ID)
+        assert db.connection.execute("SELECT count(*) FROM clips").fetchone()[0] == 0
+        assert attempts(db)[0][1] == "error"
+        assert scan_progress(db.connection, APPROVED_GAME_ID) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("pages", "budget_expires", "expected"), [(7, False, 7), (10, False, 9), (10, True, 7)]
+)
+def test_extra_overlap_extends_only_its_cursor_within_the_time_budget(
+    tmp_path, pages, budget_expires, expected
+):
+    previous = bucket_start(NOW) - BUCKET
+    visited = []
+    ticks = iter((0.0, 2.0)) if budget_expires else iter([0.0] * 10)
+
+    def handler(request):
+        start, _ = window(request)
+        visited.append(start)
+        return paged_response(request, 900, page_size=100) if start == previous else response()
+
+    twitch = mocked_client(handler)
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        Collector(
+            db,
+            twitch,
+            clock=lambda: NOW,
+            monotonic=lambda: next(ticks),
+            gta_vi_overlap=GtaViOverlap(pages, 1),
+        ).discover(APPROVED_GAME_ID)
+        assert visited.count(previous) == expected
+        assert len(visited) == expected + 2  # Current and historical allocations remain available.
+        overlap = next(row for row in attempts(db) if row[2] == to_utc_iso(previous))
+        assert overlap[1] == ("cursor_exhausted" if expected == 9 else "budget")
         assert checkpoint(db) == to_utc_iso(STALLED)
 
 

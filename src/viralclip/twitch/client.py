@@ -14,6 +14,10 @@ class TwitchAPIError(RuntimeError):
     """A safe-to-display Twitch API error that never includes credentials."""
 
 
+class TwitchRequestDeferred(TwitchAPIError):
+    """An optional request could not start without auth or rate-budget work."""
+
+
 class TwitchClient:
     TOKEN_URL = "https://id.twitch.tv/oauth2/token"
     HELIX_URL = "https://api.twitch.tv/helix"
@@ -251,15 +255,39 @@ class TwitchClient:
             return max(wait for wait in waits if isfinite(wait))
         return min(30.0, 2**attempt) + self.jitter(0.0, 0.25)
 
-    def _get(self, path: str, params: dict | list[tuple[str, str]], *, endpoint: str) -> dict:
-        token = self._get_token()
-        self._validate_token(token)
+    def _get(
+        self,
+        path: str,
+        params: dict | list[tuple[str, str]],
+        *,
+        endpoint: str,
+        extra_timeout: float | None = None,
+    ) -> dict:
+        options = {}
+        if extra_timeout is None:
+            token = self._get_token()
+            self._validate_token(token)
+        else:
+            now = self.wall_clock()
+            token = self._token
+            if (
+                not token
+                or now >= self._token_expires_at - 60
+                or now - self._validated_at >= 3600
+                or self._rate_limit_reset_at > now
+            ):
+                raise TwitchRequestDeferred(
+                    "Twitch auth or rate budget unavailable for an extra page"
+                )
+            options["timeout"] = httpx.Timeout(extra_timeout, connect=min(5.0, extra_timeout))
         refreshed = False
         retry = 0
         attempt = 0
         while True:
             remaining = max(0.0, self._rate_limit_reset_at - self.wall_clock())
             if remaining:
+                if extra_timeout is not None:
+                    raise TwitchRequestDeferred("Twitch rate budget unavailable for an extra page")
                 fields = {"delay_seconds": remaining} if isfinite(remaining) else {}
                 self._event("rate_limit_wait", endpoint, reason="bucket_exhausted", **fields)
                 self.sleep(remaining)
@@ -272,8 +300,11 @@ class TwitchClient:
                     f"{self.HELIX_URL}/{path}",
                     params=params,
                     headers={"Client-Id": self.client_id, "Authorization": f"Bearer {token}"},
+                    **options,
                 )
             except httpx.RequestError as exc:
+                if extra_timeout is not None:
+                    raise TwitchAPIError("Twitch extra-page request failed") from exc
                 if retry >= self.max_retries:
                     raise TwitchAPIError("Twitch API network request failed after retries") from exc
                 self._wait_for_retry(endpoint, attempt + 1, retry, self._network_reason(exc))
@@ -290,6 +321,16 @@ class TwitchClient:
                 else:
                     if isfinite(reset_at):
                         self._rate_limit_reset_at = reset_at
+            if extra_timeout is not None:
+                if response.status_code == 429:
+                    self._rate_limit_reset_at = max(
+                        self._rate_limit_reset_at,
+                        self.wall_clock() + self._retry_delay(response, 0),
+                    )
+                if response.status_code >= 400:
+                    raise TwitchAPIError(
+                        f"Twitch extra-page request failed with HTTP {response.status_code}"
+                    )
             if response.status_code == 401 and not refreshed:
                 token = self._get_token(force=True)
                 self._validate_token(token)
@@ -370,6 +411,7 @@ class TwitchClient:
         started_at: datetime | None = None,
         ended_at: datetime | None = None,
         after: str | None = None,
+        extra_timeout: float | None = None,
     ) -> dict:
         if (game_id is None) == (clip_ids is None):
             raise ValueError("provide exactly one of game_id or clip_ids")
@@ -401,4 +443,4 @@ class TwitchClient:
                 raise ValueError("clip ID batches must contain between 1 and 100 IDs")
             params.extend(("id", clip_id) for clip_id in clip_ids)
         endpoint = "clip_discovery" if game_id is not None else "clip_refresh"
-        return self._get("clips", params, endpoint=endpoint)
+        return self._get("clips", params, endpoint=endpoint, extra_timeout=extra_timeout)

@@ -7,7 +7,7 @@ import pytest
 
 from viralclip.cli import main
 from viralclip.twitch import telemetry
-from viralclip.twitch.client import TwitchAPIError, TwitchClient
+from viralclip.twitch.client import TwitchAPIError, TwitchClient, TwitchRequestDeferred
 from viralclip.twitch.telemetry import HttpEventLog
 
 
@@ -132,6 +132,34 @@ def test_nonfinite_throttle_headers_do_not_disable_retry_or_future_requests():
         assert client.get_clips(game_id="42") == {"data": []}
         assert client.get_clips(game_id="42") == {"data": []}
     assert sleeps == [1]
+
+
+def test_extra_page_uses_cached_auth_and_one_http_attempt_with_no_rate_wait():
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(429, headers={"Retry-After": "8"})
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http:
+        client = TwitchClient(
+            "fixture",
+            "fixture",
+            http=http,
+            wall_clock=lambda: 100,
+            sleep=lambda _: pytest.fail("extra page slept"),
+        )
+        with pytest.raises(TwitchRequestDeferred):
+            client.get_clips(game_id="42", extra_timeout=2)
+        client._token = "fixture"
+        client._token_expires_at = 3600
+        client._validated_at = 100
+        with pytest.raises(TwitchAPIError, match="HTTP 429"):
+            client.get_clips(game_id="42", extra_timeout=2)
+        with pytest.raises(TwitchRequestDeferred):
+            client.get_clips(game_id="42", extra_timeout=2)
+    assert len(requests) == 1
+    assert requests[0].extensions["timeout"]["read"] == 2
 
 
 @pytest.mark.parametrize("refresh_fails", [False, True])
