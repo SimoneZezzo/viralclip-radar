@@ -4,13 +4,16 @@ Last updated 2026-11-21 (Europe/Rome).
 
 ## Current priority
 
-**GTA VI observed-at-cutoff benchmark available offline.** The opt-in
-mode freezes recommendations before reading 24h labels and gates each
-cutoff independently. A synthetic rehearsal reached the 2/2/2 scoring
-floor at 60m and 65m. Real GTA VI 2a.3 exports were unavailable locally.
-The discovery-attested primary remains the default, with M1 and M2
-PARTIAL and M3 pending.
+**GTA VI observed-at-cutoff validated on real exports.** Three private
+2a.3 exports cover the mature November 19–21 cohorts. At 60m they contain
+253,820 clips with valid features and 24h labels out of 258,244 known
+by the cutoff. All four cutoffs return INSUFFICIENT DATA for scoring.
+The three days have declared collection interruptions in their
+creation or label horizons. Both SQLite snapshots passed integrity
+and foreign-key checks. The discovery-attested primary remains the
+default, with M1 and M2 PARTIAL and M3 pending.
 [CLI and protocol](docs/M2_COHORT_AUDIT.md#benchmark-gta-vi-sulle-clip-note-al-cutoff)
+[Real validation and pending gates](docs/PROJECT_HISTORY.md#2026-11-23-real-gta-vi-export-and-operational-validation)
 
 **M1-02 cancelled. M1-01 remains PARTIAL.** The operator waived the unmet
 original off-VPS requirement and accepted permanent loss of the experimental
