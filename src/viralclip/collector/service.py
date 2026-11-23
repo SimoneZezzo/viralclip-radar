@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
@@ -15,6 +16,7 @@ from viralclip.storage.discovery import (
     history_start,
 )
 from viralclip.twitch.client import TwitchAPIError, TwitchClient, TwitchRequestDeferred
+from viralclip.twitch.clip_pages import view_order_warnings
 
 GTA_VI_GAME_ID = "1867279146"
 DISCOVERY_BUDGET = 20
@@ -133,9 +135,11 @@ class Collector:
         run = self.database.create_run(game_id, start, end, self.clock())
         cursor = None
         cursors: set[str] = set()
-        wire_ids: set[str] = set()
+        wire_ids: dict[str, datetime] = {}
         unique_ids: set[str] = set()
         requested = pages = raw = pertinent = repeated = new = 0
+        last_views = None
+        rank_warnings: Counter = Counter()
         outcome = "page_limit" if budget == GTA_VI_RECENT_PAGES else "budget"
 
         def finish(error_summary: str | None = None) -> None:
@@ -151,6 +155,13 @@ class Collector:
                 unique=len(unique_ids),
                 scan=(lane, outcome, pertinent, repeated),
             )
+            if rank_warnings:
+                LOG.warning(
+                    "GTA VI discovery view order warning lane=%s within_page=%d between_pages=%d",
+                    lane,
+                    rank_warnings["view_order_in_page"],
+                    rank_warnings["view_order_between_pages"],
+                )
 
         try:
             deadline = None
@@ -183,15 +194,23 @@ class Collector:
                 raw += len(page)
                 new_wire_ids = False
                 outside_query = False
-                for payload_clip in page:
-                    clip = self._parse_clip(payload_clip)
+                parsed = [self._parse_clip(item) for item in page]
+                order, last_views = view_order_warnings(
+                    (clip["view_count"] for clip in parsed), last_views
+                )
+                rank_warnings.update(order)
+                for clip in parsed:
                     clip_id = clip["id"]
+                    created = clip["created_at"]
                     if clip_id in wire_ids:
+                        if wire_ids[clip_id] != created:
+                            raise TwitchAPIError(
+                                "Twitch discovery clip creation changed across pages"
+                            )
                         repeated += 1
                     else:
-                        wire_ids.add(clip_id)
+                        wire_ids[clip_id] = created
                         new_wire_ids = True
-                    created = clip["created_at"]
                     if not query_start <= created < query_end:
                         outside_query = True
                     if start <= created < end:

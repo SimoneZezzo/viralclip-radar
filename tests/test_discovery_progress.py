@@ -155,6 +155,31 @@ def test_wrong_category_does_not_write_clips_or_move_frontier(tmp_path):
         assert scan_progress(db.connection, APPROVED_GAME_ID) == (None, None)
 
 
+def test_view_order_warning_does_not_stop_real_collector_pagination(tmp_path, caplog):
+    start = bucket_start(NOW)
+
+    def handler(request):
+        if not request.url.params.get("after"):
+            return response(
+                [
+                    clip("low", created_at=start) | {"view_count": 8},
+                    clip("high", created_at=start) | {"view_count": 10},
+                ],
+                "next",
+            )
+        return response([clip("another", created_at=start) | {"view_count": 11}])
+
+    twitch = mocked_client(handler)
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        ensure_scan_ledger(db.connection)
+        collector = Collector(db, twitch, clock=lambda: NOW)
+        assert collector._scan_gta_vi(APPROVED_GAME_ID, start, NOW, "recent", 10) == 3
+        assert attempts(db)[0][1] == "cursor_exhausted"
+        assert attempts(db)[0][4] == 2
+        assert "within_page=1 between_pages=1" in caplog.text
+
+
 @pytest.mark.parametrize(
     ("pages", "budget_expires", "expected"), [(7, False, 7), (10, False, 9), (10, True, 7)]
 )

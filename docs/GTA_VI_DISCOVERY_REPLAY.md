@@ -90,3 +90,73 @@ identity, frontier regression, or loss of scheduled observations.
 The default is seven overlap pages. For a runtime rollback use the
 reviewed previous GTA VI runtime and existing isolation procedure.
 [Controlled release and rollback](GTA_VI_PILOT.md#coverage-gate-after-the-live-helix-diagnostic)
+
+## Bounded live result of 2026-11-23
+
+**INCONCLUSIVE.** The authorized live comparison stopped at the first
+page of the first window. Some returned view counts increased within the
+page despite its HTTP 200 status. Three HTTP requests were attempted:
+one token request, one validation and one discovery page. Pages 8–10
+were unobserved. The stop rule remained in force and no further probe
+requests were sent on that attempt.
+[Live test evidence](PROJECT_HISTORY.md#2026-11-23-bounded-gta-vi-helix-comparison)
+
+## Resumed comparison and canary decision
+
+The 07:38 UTC comparison restarted each original cursor sequence
+within the first-hour eligibility horizon, spending the remaining
+27 HTTP requests, including two for authentication. Rank inversions
+were warnings after validating IDs, category, timestamps and cursor
+progress. Changing view counts and repeat IDs are compatible with set
+comparison. A contradictory creation time, unusable page or stalled
+cursor with continuation is fatal. Neither rank order nor an exhausted
+cursor establishes discovery coverage.
+
+| Window UTC | Unique in pages 1–7 | Extra pages read | Additional unique | Additional absent from pre-probe DB | Known IDs absent through cap |
+| --- | ---: | --- | ---: | ---: | ---: |
+| 07:00–07:10 | 436 | 8–9 | 47 | 4 | 443 |
+| 06:50–07:00 | 398 | 8 | 48 | 14 | 519 |
+| 06:40–06:50 | 397 | 8 | 82 | 1 | 512 |
+
+The additional IDs received within 10/30/35/60/65 minutes of creation
+were **0/2/29/177/177**. The repeated rows totaled 503. There were
+four within-page inversions, zero outside-window rows, and no terminal
+cursor. The 1,474 known IDs absent through the tested caps are
+unresolved. The resumed probe made 25 discovery calls, plus token
+issue and validation. Discovery consumed 4.748s aggregate HTTP time
+with 198ms median and 219ms p95. All responses were HTTP 200, with
+798/800 as the lowest reported remaining budget. Full experiment
+cost was 30 requests. No further calls are authorized.
+
+**GO for a separately authorized eight-page overlap canary on GTA VI.**
+Two windows independently showed an increase on page eight. A canary
+must preserve GTA V, restrict the change to the reviewed GTA VI runtime
+and set `VIRALCLIP_GTA_VI_OVERLAP_PAGES=8`. This allows one extra
+logical page per cycle and up to 12 per hour at the current cadence,
+with the existing authentication, timeout and scheduling guards.
+Freeze the before/after observation protocol in advance. Verify real
+same-phase receipt times and incremental in-window IDs before 60m,
+normal progress and scheduled work after at least three cycles, and
+no new rate exhaustion or database-identity or category errors.
+A separate mature-cohort comparison is required for any data-quality
+claim. Roll back on a fatal pagination or identity error, 429 or
+dangerously low headroom, a stalled frontier, or sustained queue
+regression. Restore the verified prior runtime and seven-page
+configuration using the existing controlled rollback.
+
+Adaptive paged overlap reuses the original aligned windows and calls
+the optional page only with a remaining cursor and time/rate budget.
+That is the lowest-cost option supported by live evidence. Five-minute
+splits remain unjustified given the rounded-bounds replay. A broad
+broadcaster fan-out would need at least 424–461 initial calls per
+sampled bucket just to query the already-known broadcasters. The
+category-filtered streams endpoint returns only live streams. Clip-ID
+lookups can verify known omissions and cannot enumerate unknown IDs.
+[Twitch Get Clips](https://dev.twitch.tv/docs/api/reference/clips#get-clips)
+[Twitch Get Streams](https://dev.twitch.tv/docs/api/reference/streams#get-streams)
+
+The comparison used three fixed recent historical windows while they
+were still within 60 minutes. It establishes when this probe received
+the extra IDs. Production cadence, observed feature availability in the
+database, unseen Twitch clips, and whole-day primary search evidence
+remain separate questions.
