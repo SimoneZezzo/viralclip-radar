@@ -40,6 +40,7 @@ MAX_DAYS = 366
 MAX_EARLY = 4096
 MAX_DISCOVERY_RUNS = 120_000
 DISCOVERY_POLICY = "legacy-search-day-v1"
+READINESS_DAYS = 30
 DELAY_BOUNDS = tuple(sorted(set(TARGET_AGES_SECONDS) | {60 * m for m in CUTOFFS}))
 LABEL_QUERY = """
 SELECT c.clip_id, c.created_at, c.first_seen_at, j.job_id, j.status, j.due_at, j.completed_at,
@@ -517,6 +518,16 @@ def discovery_exclusions(windows: dict) -> list[str]:
     return reasons
 
 
+def day_exclusions(day: datetime, watermark: datetime, outages, windows: dict) -> list[str]:
+    maturity = day + DAY + MATURITY
+    reasons = []
+    if maturity > watermark:
+        reasons.append("utc_day_not_fully_mature")
+    if any(start < maturity and stop > day for start, stop in outages):
+        reasons.append("declared_outage_in_creation_or_observation_period")
+    return reasons + discovery_exclusions(windows)
+
+
 def primary_discovery_evidence(
     db: sqlite3.Connection, selection: Selection, watermark: datetime, games: tuple[str, ...]
 ) -> dict:
@@ -531,12 +542,7 @@ def primary_discovery_evidence(
                 if (
                     selection.start <= day
                     and day + DAY <= selection.end
-                    and day + DAY + MATURITY <= watermark
-                    and not discovery_exclusions(evidence.report())
-                    and not any(
-                        start < day + DAY + MATURITY and end > day
-                        for start, end in selection.outages
-                    )
+                    and not day_exclusions(day, watermark, selection.outages, evidence.report())
                 ):
                     result["game_days"].append({"game_id": game, "day_utc": day.date().isoformat()})
     except (AuditError, sqlite3.Error, ValueError) as exc:
@@ -620,13 +626,7 @@ def audit_game(
         cohort = daily.get(day, Pool())
         windows = coverage.get(day, DiscoveryDay()).report()
         mature = day + DAY + MATURITY <= watermark
-        exposed = any(a < day + DAY + MATURITY and b > day for a, b in outages)
-        reasons = []
-        if not mature:
-            reasons.append("utc_day_not_fully_mature")
-        if exposed:
-            reasons.append("declared_outage_in_creation_or_observation_period")
-        reasons.extend(discovery_exclusions(windows))
+        reasons = day_exclusions(day, watermark, outages, windows)
         if not cohort.labels:
             reasons.append("no_clips")
         elif not cohort.labels["valid"]:
@@ -713,6 +713,117 @@ def failed(game: str, reason: str) -> dict:
     }
 
 
+def readiness_sample(db: sqlite3.Connection, game: str) -> tuple[int, datetime]:
+    if [r[0] for r in db.execute("SELECT game_id FROM games")] != [game]:
+        raise AuditError("unexpected_game_id")
+    row = db.execute(
+        """
+        SELECT s.snapshot_id,s.observed_at,c.game_id
+        FROM clip_snapshots s LEFT JOIN clips c USING(clip_id)
+        ORDER BY s.snapshot_id DESC LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        raise AuditError("no_observation_watermark")
+    snapshot_id, observed, actual_game = row
+    watermark = parse_utc(observed)
+    if watermark > datetime.now(UTC) or game != actual_game:
+        raise AuditError("invalid_observation_source")
+    return snapshot_id, watermark
+
+
+def readiness_game(db, game, start, end, watermark, outages, deadline) -> dict:
+    daily, ledger = discovery(db, game, start, end, watermark, deadline)
+    days = []
+    possible = []
+    for offset in range((end - start).days):
+        day = start + offset * DAY
+        windows = daily.get(day, DiscoveryDay()).report()
+        reasons = day_exclusions(day, watermark, outages, windows)
+        if not reasons:
+            possible.append(day)
+        days.append(
+            {
+                "day_utc": day.date().isoformat(),
+                "fully_mature_at": to_utc_iso(day + DAY + MATURITY),
+                "calendar_candidate": not reasons,
+                "exclusion_reasons": reasons,
+                "discovery": windows,
+            }
+        )
+    pairs = split_options(possible, [0] * len(possible), deadline)["software"][
+        "feasible_boundary_pairs"
+    ]
+    return {
+        "days": days,
+        "discovery": ledger,
+        "calendar_candidates": len(possible),
+        "potential_split_pairs": pairs,
+        "matched_and_validated_days": None,
+        "next_action": "AUDIT_SEALED_SOURCES" if pairs else "WAIT_FOR_COVERED_MATURE_DAYS",
+    }
+
+
+def add_readiness(args: argparse.Namespace, payload: dict, deadline: float) -> dict:
+    reports = payload["games"]
+    payload["mode"] = "readiness"
+    with ExitStack() as stack:
+        sources = {}
+        for game, path in zip(GAMES, (args.gta_v, args.gta_vi), strict=True):
+            try:
+                db = open_snapshot(stack, path, deadline)
+                sources[game] = db, *readiness_sample(db, GAMES[game])
+            except AUDIT_EXCEPTIONS as exc:
+                reports[game] = failed(game, error_code(exc, deadline))
+        common = min(s[2] for s in sources.values()) if len(sources) == len(GAMES) else None
+        if common:
+            payload.update(common_watermark=to_utc_iso(common), watermark_status="COMMON")
+        for game, (db, snapshot_id, observed) in sources.items():
+            watermark = common or observed
+            end = args.end or midnight(watermark) + DAY
+            start = args.start or end - READINESS_DAYS * DAY
+            try:
+                if not 0 < (end - start).days <= MAX_DAYS:
+                    raise AuditError("invalid_or_oversized_audit_range")
+                reports[game] = {
+                    "game_id": GAMES[game],
+                    "status": "VERIFIED",
+                    "decision": "PARTIAL",
+                    "decision_reason": "calendar_prerequisites_only",
+                    "max_snapshot_id_at_snapshot": snapshot_id,
+                    "cohort_watermark": to_utc_iso(watermark),
+                    "watermark_basis": "common_latest_appended"
+                    if common
+                    else "individual_latest_appended",
+                    **readiness_game(
+                        db, GAMES[game], start, end, watermark, args.outage[game], deadline
+                    ),
+                }
+                if common is None:
+                    reports[game]["next_action"] = "VERIFY_BOTH_SOURCES"
+            except AUDIT_EXCEPTIONS as exc:
+                reports[game] = failed(game, error_code(exc, deadline))
+        for game, (db, _, observed) in sources.items():
+            if args.quality_day is None or reports[game]["status"] != "VERIFIED":
+                continue
+            try:
+                if db.execute("PRAGMA journal_mode").fetchone()[0] == "wal":
+                    raise AuditError("quality_probe_requires_sealed_source")
+                day = args.quality_day
+                pool, _ = audit_clips(db, GAMES[game], day, day + DAY, common or observed, deadline)
+                reports[game]["quality_day"] = {
+                    "status": "VERIFIED",
+                    "day_utc": day.date().isoformat(),
+                    **pool.report(),
+                }
+            except AUDIT_EXCEPTIONS as exc:
+                reports[game]["quality_day"] = {
+                    "status": "UNKNOWN",
+                    "reason": error_code(exc, deadline),
+                }
+    return payload
+
+
 def run_audit(args: argparse.Namespace) -> dict:
     started = datetime.now(UTC)
     deadline = time.monotonic() + args.timeout
@@ -741,6 +852,9 @@ def run_audit(args: argparse.Namespace) -> dict:
     except AUDIT_EXCEPTIONS as exc:
         reports.update({game: failed(game, error_code(exc, deadline)) for game in GAMES})
         return payload
+
+    if getattr(args, "readiness", False):
+        return add_readiness(args, payload, deadline)
 
     with ExitStack() as stack:
         sources = {}
@@ -815,6 +929,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--outage", nargs=3, action="append", metavar=("GAME", "START", "END"))
     parser.add_argument("--timeout", type=int, default=30, help="Overall audit deadline in seconds")
     parser.add_argument(
+        "--readiness", action="store_true", help="Scan coverage and maturity prerequisites only"
+    )
+    parser.add_argument(
+        "--quality-day",
+        type=utc_day,
+        help="Optional single UTC day of clip metrics on sealed sources",
+    )
+    parser.add_argument(
         "--verify-support", nargs=2, metavar=("DATASET_SHA256", "EVALUATION_SHA256")
     )
     args = parser.parse_args(argv)
@@ -822,6 +944,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--timeout must be between 1 and 120 seconds")
     if args.start and args.end and not 0 < (args.end - args.start).days <= MAX_DAYS:
         parser.error("UTC creation interval must contain between 1 and 366 days")
+    if args.quality_day is not None and not args.readiness:
+        parser.error("--quality-day requires --readiness")
     outages = {game: [] for game in GAMES}
     try:
         for game, start, end in args.outage or []:

@@ -200,6 +200,46 @@ def test_independent_games_use_common_watermark_and_keep_empty_days(pair):
     assert report["games"]["gta-vi"]["totals"]["clips_first_seen_after_watermark"] == 1
 
 
+def test_readiness_requests_audit_only_for_possible_mature_legacy_splits(pair):
+    v, vi = pair
+    v.pool(0)
+    for offset in (0, 1, 4, 5, 8, 9):
+        day = START + offset * DAY
+        if offset:
+            v.run(day, day + DAY)
+        vi.run(day, day + DAY, "scanned", "recent", "cursor_exhausted")
+    for fixture in pair:
+        fixture.stamp(START + 12 * DAY)
+        fixture.close()
+    args = ("--readiness", "--start", "2025-11-01", "--end", "2025-11-11")
+    process, report = cli(v.path, vi.path, *args, "--quality-day", "2025-11-01")
+    assert process.returncode == 0
+    assert report["mode"] == "readiness"
+    assert report["common_watermark"] == to_utc_iso(START + 12 * DAY)
+    left, right = (report["games"][name] for name in ("gta-v", "gta-vi"))
+    assert left["calendar_candidates"] == 6
+    assert left["potential_split_pairs"] >= 1
+    assert left["next_action"] == "AUDIT_SEALED_SOURCES"
+    assert left["decision"] == "PARTIAL"
+    assert left["matched_and_validated_days"] is None
+    assert left["quality_day"]["matched_all_cutoffs"] == 10
+    assert right["calendar_candidates"] == right["potential_split_pairs"] == 0
+    assert right["next_action"] == "WAIT_FOR_COVERED_MATURE_DAYS"
+    assert right["days"][0]["exclusion_reasons"] == ["insufficient_discovery_coverage_evidence"]
+
+    _, report = cli(
+        v.path,
+        vi.path,
+        *args,
+        "--outage",
+        "gta-v",
+        to_utc_iso(START + 2 * DAY),
+        to_utc_iso(START + 2 * DAY + MINUTE),
+    )
+    assert report["games"]["gta-v"]["potential_split_pairs"] == 0
+    assert report["games"]["gta-v"]["next_action"] == "WAIT_FOR_COVERED_MATURE_DAYS"
+
+
 def test_feature_and_label_attrition_duplicates_and_link_errors(pair):
     v, vi = pair
     v.clip("PRIVATE_ZERO", START, views=0)

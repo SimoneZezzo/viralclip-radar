@@ -150,6 +150,37 @@ leggibili per la diagnosi. Le automazioni leggono lo stato JSON di insufficienza
 Riportare incertezza tra giornate e dimensioni dei pool. Recall@10 vale 1
 per qualsiasi ordine in un pool di dieci clip.
 
+## Controllo dei nuovi giorni
+
+`--readiness` legge il registro e l'ultima osservazione aggiunta in
+ciascun DB. Usa il minore dei due timestamp come watermark comune.
+Il default è una finestra di 30 giorni UTC. I motivi di esclusione
+riusano il criterio primario di discovery, le interruzioni dichiarate
+e l'embargo di maturità. Il controllo evita letture globali delle
+osservazioni e il calcolo di feature ed esiti quando serve solo il
+gate di calendario.
+
+```powershell
+uv run --offline --no-sync python -I -B -m viralclip.m2_audit --gta-v 'v-fixture.sqlite3' --gta-vi 'vi-fixture.sqlite3' --readiness
+```
+
+`next_action=WAIT_FOR_COVERED_MATURE_DAYS` indica che il calendario
+non può ancora supportare gli split minimi. `AUDIT_SEALED_SOURCES` è
+il segnale per eseguire l'audit completo su copie sigillate e
+verificare gli esiti matched, le date e gli hash prima di chiamare
+`evaluate`. Nessuno stato di questo controllo autorizza da solo
+la valutazione. `VERIFY_BOTH_SOURCES` segnala l'assenza di un
+watermark comune. I giorni del solo ledger GTA VI continuano a
+fallire il prerequisito del primario.
+
+Su copie sigillate, `--readiness --quality-day YYYY-MM-DD` misura per
+una giornata la distribuzione della prima discovery, le feature ai
+quattro cutoff, la freschezza negli ultimi cinque minuti, gli esiti
+maturi e i matched. La diagnostica riusa la stessa selezione
+point-in-time. Un timeout del campione qualità produce `UNKNOWN`
+per quel campione. I risultati del gate di calendario restano
+disponibili. Nessun servizio o pianificazione è installato.
+
 ## Evidenza locale del 22 novembre 2026
 
 Su Windows, la verifica strict ha eseguito 190 test con 0 errori e 0 skip.
