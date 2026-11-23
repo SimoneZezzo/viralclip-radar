@@ -433,6 +433,29 @@ def test_legacy_completion_with_known_omission_loses_coverage_until_verified_ove
     vi.close()
 
 
+def test_legacy_coverage_controls_for_windows_1427_and_1404(pair):
+    v, vi = pair
+    good = START + timedelta(hours=10, minutes=32)
+    bad = START + timedelta(hours=12, minutes=28)
+    v.clip("PRIVATE_CONTROL", good + MINUTE)
+    v.clip("PRIVATE_OMITTED_ONE", bad + MINUTE)
+    v.clip("PRIVATE_OMITTED_TWO", bad + 2 * MINUTE)
+    width = 30 * MINUTE
+    v.run(good, good + width)
+    v.run(bad, bad + width, known_omissions=("PRIVATE_OMITTED_ONE", "PRIVATE_OMITTED_TWO"))
+
+    def credit(start):
+        days, _ = m2_audit.discovery(
+            v.db, v.game, start, start + width, START + DAY, time.monotonic() + 5
+        )
+        return days[START].report()["legacy_success_seconds"]
+
+    assert credit(bad) == 0
+    assert credit(good) == 1800
+    v.close()
+    vi.close()
+
+
 def test_full_workflow_go_is_per_game_and_uses_whole_day_embargo(pair):
     v, vi = pair
     for offset in (0, 1, 4, 5, 8, 9):

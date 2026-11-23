@@ -10,6 +10,8 @@ from viralclip.collector.service import Collector
 from viralclip.config import load_settings
 from viralclip.dataset import CUTOFFS, Selection, extract
 from viralclip.evaluation import run_evaluation
+from viralclip.observed_evaluation import MODE as OBSERVED_COHORT
+from viralclip.observed_evaluation import run_observed_evaluation
 from viralclip.storage.database import Database, parse_utc, utc_now
 from viralclip.storage.health import LEVELS, read_health
 from viralclip.twitch.client import TwitchAPIError, TwitchClient
@@ -46,6 +48,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     evaluation = commands.add_parser("evaluate", help="evaluate chronological ranking baselines")
     evaluation.add_argument("datasets", nargs="+", type=Path, help="dataset artifact directories")
+    evaluation.add_argument(
+        "--cohort",
+        choices=("primary", OBSERVED_COHORT),
+        default="primary",
+        help="evaluation cohort (default: primary)",
+    )
     evaluation.add_argument("--validation-start", help="validation start at UTC midnight")
     evaluation.add_argument("--test-start", help="test start at UTC midnight")
     evaluation.add_argument("--k", type=int, default=10, help="maximum size of the top ranks")
@@ -71,7 +79,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "evaluate":
         try:
-            report = run_evaluation(
+            if args.cohort == OBSERVED_COHORT:
+                evaluate_cohort = run_observed_evaluation
+            else:
+                evaluate_cohort = run_evaluation
+            report = evaluate_cohort(
                 args.datasets,
                 args.output,
                 parse_utc(args.validation_start) if args.validation_start is not None else None,

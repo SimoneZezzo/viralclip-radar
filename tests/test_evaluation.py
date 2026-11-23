@@ -299,6 +299,13 @@ def test_overlap_deduplicates_and_report_manifest_is_reproducible(replays, monke
         == sha256((left / "manifest.json").read_bytes()).hexdigest()
     )
     assert "broadcaster-1" not in (left / "broadcasters.csv").read_text(encoding="utf-8")
+    explicit = left.parent / "explicit-primary"
+    assert (
+        main(["evaluate", str(left), str(right), "--cohort", "primary", "--output", str(explicit)])
+        == 0
+    )
+    for name in ("evaluation.json", "manifest.json"):
+        assert (output / name).read_bytes() == (explicit / name).read_bytes()
 
 
 def test_hash_mismatch_is_rejected(replays):

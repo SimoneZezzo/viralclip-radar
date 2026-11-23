@@ -199,6 +199,39 @@ point-in-time. Un timeout del campione qualità produce `UNKNOWN`
 per quel campione. I risultati del gate di calendario restano
 disponibili. Nessun servizio o pianificazione è installato.
 
+## Benchmark GTA VI sulle clip note al cutoff
+
+`evaluate --cohort observed-at-cutoff` usa export locali 2a.3 della
+categoria GTA VI (`1867279146`). Il cutoff principale è 60m, con gate
+indipendenti a 30m, 35m e 65m. `evaluate` usa il benchmark primario
+per default. Il benchmark sulle clip note usa gli stati dei candidati
+per ricostruire il confine inclusivo della prima discovery. Le righe
+`missing_observations` restano nella coorte, con score mancanti.
+
+```powershell
+uv run --offline --no-sync viralclip evaluate data/datasets/gta-vi-2a3 --cohort observed-at-cutoff --validation-start 2026-11-05T00:00:00Z --test-start 2026-11-09T00:00:00Z --output data/evaluations/gta-vi-observed
+```
+
+Sostituire date ed export con le fonti congelate e i confini prescelti.
+`recommendations.csv` conserva le posizioni originali delle quattro top
+10 per giorno e cutoff. La CLI le congela prima di leggere le label.
+`evaluation.json` conta feature, età e freschezza, stati delle label e
+posizioni con score, label o entrambi. Un esito mancante lascia la
+posizione originale occupata. La top 10 del sottoinsieme etichettato
+è riportata con il suo denominatore. Le metriche sulla coorte intera
+richiedono tutte le label valide. Le top 10 con al massimo dieci clip
+sono segnalate come banali. `manifest.json` conserva gli hash degli
+input e degli output, i watermark e le impostazioni.
+
+Ogni cutoff richiede per giorno UTC almeno 10 label valide e due esiti
+distinti, e almeno 2/2/2 giorni dopo embargo per produrre metriche
+di validation e test. I giorni devono avere estrazione intera, maturità
+a 24h + 5m e nessuna interruzione dichiarata nel loro orizzonte.
+Il report distingue questo minimo dal target di 7/3/7 giorni e 500
+label valide nel test. Il denominatore per ciascun cutoff conta ogni
+clip una volta. Le clip note arrivate tardi sono contate a parte e
+le clip mai scoperte restano `UNKNOWN`.
+
 ## Evidenza locale del 22 novembre 2026
 
 Su Windows, la verifica strict ha eseguito 190 test con 0 errori e 0 skip.

@@ -4,6 +4,14 @@ Last updated 2026-11-21 (Europe/Rome).
 
 ## Current priority
 
+**GTA VI observed-at-cutoff benchmark available offline.** The opt-in
+mode freezes recommendations before reading 24h labels and gates each
+cutoff independently. A synthetic rehearsal reached the 2/2/2 scoring
+floor at 60m and 65m. Real GTA VI 2a.3 exports were unavailable locally.
+The discovery-attested primary remains the default, with M1 and M2
+PARTIAL and M3 pending.
+[CLI and protocol](docs/M2_COHORT_AUDIT.md#benchmark-gta-vi-sulle-clip-note-al-cutoff)
+
 **M1-02 cancelled. M1-01 remains PARTIAL.** The operator waived the unmet
 original off-VPS requirement and accepted permanent loss of the experimental
 dataset if the VPS and its copies are lost. Automated backups and off-VPS

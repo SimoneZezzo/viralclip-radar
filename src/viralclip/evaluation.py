@@ -33,6 +33,7 @@ class Candidate:
     status: str
     observation_ids: str
     scores: tuple[float | None, ...]
+    latest_age_seconds: float | None = field(default=None, compare=False)
 
     @property
     def day(self) -> datetime:
@@ -69,11 +70,28 @@ class Inputs:
     primary_clips: set[str] = field(default_factory=set)
 
 
+@dataclass(frozen=True)
+class CandidateExport:
+    directory: Path
+    window: SourceWindow
+    clip_ids: set[str]
+    hashes: dict[str, str]
+
+
+def _verified_file(directory: Path, name: str, digest: str) -> bytes:
+    data = (directory / name).read_bytes()
+    if sha256(data).hexdigest() != digest:
+        raise ValueError(f"Dataset hash mismatch for {name}")
+    return data
+
+
 def _csv(data: bytes) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(data.decode("utf-8"), newline="")))
 
 
-def _candidate(row: dict[str, str], window: SourceWindow) -> Candidate:
+def _candidate(
+    row: dict[str, str], window: SourceWindow, *, check_discovery: bool = False
+) -> Candidate:
     created = parse_utc(row["created_at"])
     cutoff = int(row["cutoff_minutes"])
     prediction = created + timedelta(minutes=cutoff)
@@ -87,12 +105,20 @@ def _candidate(row: dict[str, str], window: SourceWindow) -> Candidate:
         or (status == "cutoff_immature") != (prediction > window.watermark)
     ):
         raise ValueError("Candidate outside its declared cohort or prediction window")
+    delay = None
+    if check_discovery and status in ("eligible", "missing_observations"):
+        delay = float(row["discovery_delay_seconds"])
+        if not 0 <= delay <= cutoff * 60:
+            raise ValueError("Discovery delay disagrees with the cutoff cohort")
     scores = (None,) * len(BASELINES)
+    age = None
     if status == "eligible":
         first = parse_utc(row["first_observed_at"])
         latest = parse_utc(row["latest_observed_at"])
         if not created <= first <= latest <= prediction:
             raise ValueError("Feature observation falls outside its prediction window")
+        if delay is not None and (first - created).total_seconds() < delay:
+            raise ValueError("Feature observation precedes discovery")
         age = (latest - created).total_seconds()
         if float(row["latest_observation_age_seconds"]) != age:
             raise ValueError("Invalid feature observation age")
@@ -124,7 +150,7 @@ def _candidate(row: dict[str, str], window: SourceWindow) -> Candidate:
             raise ValueError("Baseline growth disagrees with its observations")
         scores = (views, growth, rate, views / max(age / 60, 1))
     return Candidate(
-        row["clip_id"], row["game_id"], created, cutoff, status, row["observation_ids"], scores
+        row["clip_id"], row["game_id"], created, cutoff, status, row["observation_ids"], scores, age
     )
 
 
@@ -185,31 +211,29 @@ def _primary_days(coverage: dict, window: SourceWindow) -> set[tuple[str, dateti
     return days if policy == DISCOVERY_POLICY else set()
 
 
-def read_inputs(directories: list[Path]) -> Inputs:
+def read_candidate_exports(
+    directories: list[Path], *, observed_game: str | None = None
+) -> tuple[Inputs, list[CandidateExport]]:
     inputs = Inputs({}, {}, {}, [], set(), [], 0, 0)
-    clip_identity: dict[str, Candidate] = {}
+    exports = []
     candidate_times: dict[tuple[str, int], datetime] = {}
-    outcome_times: dict[str, datetime] = {}
-    broadcaster_times: dict[str, datetime] = {}
+    clip_identity: dict[str, tuple[str, datetime]] = {}
     for directory in directories:
         raw_manifest = (directory / "manifest.json").read_bytes()
         manifest = json.loads(raw_manifest)
+        version = manifest["extraction_version"]
         if (
-            manifest["extraction_version"] not in ("2a.1", "2a.2", "2a.3")
+            version not in ("2a.1", "2a.2", "2a.3")
             or manifest["cutoffs_minutes"] != list(CUTOFFS)
             or not set(FEATURES) <= set(manifest["model_feature_columns"])
             or manifest["rules"]["label_window_age_seconds_inclusive"] != [86400, 86700]
         ):
             raise ValueError("Unsupported dataset manifest")
-        names = {"candidates.csv", "outcomes.csv", "dataset.csv", "coverage.json"}
-        if manifest["extraction_version"] != "2a.1":
-            names.add("broadcasters.csv")
-        contents = {}
-        for name in sorted(names):
-            data = (directory / name).read_bytes()
-            if sha256(data).hexdigest() != manifest["sha256"][name]:
-                raise ValueError(f"Dataset hash mismatch for {name}")
-            contents[name] = data
+        if observed_game is not None and version != "2a.3":
+            raise ValueError("Observed-at-cutoff evaluation requires export 2a.3")
+        names = ["broadcasters.csv"] if version != "2a.1" else []
+        names.extend(("candidates.csv", "coverage.json", "dataset.csv", "outcomes.csv"))
+        hashes = {name: manifest["sha256"][name] for name in names}
         window = SourceWindow(
             parse_utc(manifest["creation_start_inclusive"]),
             parse_utc(manifest["creation_end_exclusive"]),
@@ -221,35 +245,32 @@ def read_inputs(directories: list[Path]) -> Inputs:
         inputs.fingerprints.append(
             {
                 "path": str(directory),
-                "version": manifest["extraction_version"],
+                "version": version,
                 "manifest_sha256": sha256(raw_manifest).hexdigest(),
-                "artifact_sha256": {name: manifest["sha256"][name] for name in sorted(names)},
+                "artifact_sha256": hashes,
                 "watermark": to_utc_iso(window.watermark),
             }
         )
-        outages = []
-        coverage = json.loads(contents["coverage.json"])
-        for outage in coverage["outages"]:
-            start, end = parse_utc(outage["start"]), parse_utc(outage["end"])
-            if start >= end:
-                raise ValueError("Invalid declared outage interval")
-            inputs.outages.add((start, end))
-            outages.append((start, end))
-
         local: dict[tuple[str, int], Candidate] = {}
-        for row in _csv(contents["candidates.csv"]):
-            candidate = _candidate(row, window)
+        for row in _csv(_verified_file(directory, "candidates.csv", hashes["candidates.csv"])):
+            candidate = _candidate(row, window, check_discovery=observed_game is not None)
             key = (candidate.clip_id, candidate.cutoff)
             if key in local:
                 raise ValueError("Repeated clip and cutoff within one dataset")
             local[key] = candidate
-            identity = clip_identity.setdefault(candidate.clip_id, candidate)
-            if (identity.created, identity.game_id) != (candidate.created, candidate.game_id):
+            identity = (candidate.game_id, candidate.created)
+            if clip_identity.setdefault(candidate.clip_id, identity) != identity:
                 raise ValueError("Overlapping datasets disagree on clip identity")
             previous = inputs.candidates.get(key)
             if (
                 previous
-                and previous != candidate
+                and (
+                    previous != candidate
+                    or (
+                        observed_game is not None
+                        and previous.latest_age_seconds != candidate.latest_age_seconds
+                    )
+                )
                 and (previous.status != "cutoff_immature" and candidate.status != "cutoff_immature")
             ):
                 raise ValueError("Overlapping datasets disagree on point-in-time features")
@@ -259,27 +280,48 @@ def read_inputs(directories: list[Path]) -> Inputs:
 
         local_ids = {i for i, _ in local}
         games = window.games or tuple(sorted({row.game_id for row in local.values()}))
+        if observed_game is not None and set(games) != {observed_game}:
+            raise ValueError("Observed-at-cutoff evaluation requires only the GTA VI category")
+        if len(local) != len(local_ids) * len(CUTOFFS):
+            raise ValueError("Incomplete clip, cutoff or outcome keys")
+        window = SourceWindow(window.start, window.end, window.watermark, games)
+        exports.append(CandidateExport(directory, window, local_ids, hashes))
+        inputs.input_candidates += len(local)
+    return inputs, exports
+
+
+def read_export_outcomes(inputs: Inputs, exports: list[CandidateExport]) -> None:
+    outcome_times: dict[str, datetime] = {}
+    broadcaster_times: dict[str, datetime] = {}
+    for export, fingerprint in zip(exports, inputs.fingerprints, strict=True):
+        window, local_ids = export.window, export.clip_ids
+        contents = {
+            name: _verified_file(export.directory, name, digest)
+            for name, digest in export.hashes.items()
+            if name != "candidates.csv"
+        }
+        outages = []
+        coverage = json.loads(contents["coverage.json"])
+        for outage in coverage["outages"]:
+            start, end = parse_utc(outage["start"]), parse_utc(outage["end"])
+            if start >= end:
+                raise ValueError("Invalid declared outage interval")
+            inputs.outages.add((start, end))
+            outages.append((start, end))
         source_window = SourceWindow(
-            window.start, window.end, window.watermark, games, tuple(outages)
+            window.start, window.end, window.watermark, window.games, tuple(outages)
         )
         inputs.windows.append(source_window)
         primary_days = (
-            _primary_days(coverage, source_window)
-            if manifest["extraction_version"] == "2a.3"
-            else set()
+            _primary_days(coverage, source_window) if fingerprint["version"] == "2a.3" else set()
         )
         outcomes = _csv(contents["outcomes.csv"])
-        if (
-            len(local) != len(local_ids) * len(CUTOFFS)
-            or len(outcomes) != len(local_ids)
-            or {r["clip_id"] for r in outcomes} != local_ids
-        ):
+        if len(outcomes) != len(local_ids) or {r["clip_id"] for r in outcomes} != local_ids:
             raise ValueError("Incomplete clip, cutoff or outcome keys")
-        inputs.input_candidates += len(local)
         inputs.input_outcomes += len(outcomes)
         for row in outcomes:
             clip_id = row["clip_id"]
-            clip = clip_identity[clip_id]
+            clip = inputs.candidates[clip_id, CUTOFFS[0]]
             outcome = _outcome(row, clip, window.watermark)
             if outcome.status == "valid" and (clip.game_id, clip.day) in primary_days:
                 inputs.primary_clips.add(clip_id)
@@ -326,6 +368,11 @@ def read_inputs(directories: list[Path]) -> Inputs:
                 ):
                     inputs.broadcasters[clip_id] = token
                     broadcaster_times[clip_id] = window.watermark
+
+
+def read_inputs(directories: list[Path]) -> Inputs:
+    inputs, exports = read_candidate_exports(directories)
+    read_export_outcomes(inputs, exports)
     return inputs
 
 
@@ -360,12 +407,23 @@ def _day_is_covered(
         for start, end in window.outages
     ):
         return False
+    return source_windows_cover_day(day, windows, deadline)
+
+
+def source_windows_cover_day(
+    day: datetime,
+    windows: list[SourceWindow],
+    deadline: datetime | None = None,
+    *,
+    mature: bool = True,
+) -> bool:
     cursor = day
     for window in sorted(windows, key=lambda w: w.start):
         if window.start > cursor:
             return False
         watermark = min(window.watermark, deadline) if deadline is not None else window.watermark
-        cursor = max(cursor, min(window.end, watermark - MATURITY))
+        end = min(window.end, watermark - MATURITY) if mature else window.end
+        cursor = max(cursor, end)
         if cursor >= day + DAY:
             return True
     return False
@@ -478,6 +536,13 @@ def _population(rows, inputs: Inputs) -> dict:
     }
 
 
+def rank_candidates(pool: list[Candidate], baseline: int) -> list[Candidate]:
+    return sorted(
+        pool,
+        key=lambda row: (row.scores[baseline] is None, -(row.scores[baseline] or 0), row.clip_id),
+    )
+
+
 def _scores(period, inputs: Inputs, k: int) -> dict:
     _, eligible, matched, rankable = period
     result = {}
@@ -498,10 +563,7 @@ def _scores(period, inputs: Inputs, k: int) -> dict:
                 views = {row.clip_id: inputs.outcomes[row.clip_id].views for row in pool}
                 methods = {}
                 for i, method in enumerate(BASELINES):
-                    ordered = sorted(
-                        pool,
-                        key=lambda r: (r.scores[i] is None, -(r.scores[i] or 0), r.clip_id),
-                    )
+                    ordered = rank_candidates(pool, i)
                     methods[method] = ranking_metrics([r.clip_id for r in ordered], views, k)
                 metrics.append(
                     {
@@ -525,11 +587,9 @@ def _scores(period, inputs: Inputs, k: int) -> dict:
     return result
 
 
-def evaluate(
-    inputs: Inputs, validation_start: datetime | None, test_start: datetime | None, k: int
-) -> dict:
-    if k < 1:
-        raise ValueError("K must be positive")
+def validate_split_boundaries(
+    validation_start: datetime | None, test_start: datetime | None
+) -> None:
     if (validation_start is None) != (test_start is None) or (
         validation_start is not None
         and (
@@ -541,6 +601,14 @@ def evaluate(
         )
     ):
         raise ValueError("Supply both boundaries as increasing UTC midnights")
+
+
+def evaluate(
+    inputs: Inputs, validation_start: datetime | None, test_start: datetime | None, k: int
+) -> dict:
+    if k < 1:
+        raise ValueError("K must be positive")
+    validate_split_boundaries(validation_start, test_start)
     rows = list(inputs.candidates.values())
     games = sorted(
         {row.game_id for row in rows} | {game for w in inputs.windows for game in w.games}
