@@ -20,7 +20,7 @@ from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from viralclip import dataset, evaluation
-from viralclip.dataset import CUTOFFS, Clip, Observation, candidate, outcome
+from viralclip.dataset import CUTOFFS, Clip, Observation, Selection, candidate, outcome
 from viralclip.evaluation import DAY, MATURITY, MIN_DAYS, MIN_POOL
 from viralclip.storage.database import TARGET_AGES_SECONDS, parse_utc, to_utc_iso
 
@@ -39,6 +39,7 @@ SCAN_OUTCOMES = (
 MAX_DAYS = 366
 MAX_EARLY = 4096
 MAX_DISCOVERY_RUNS = 120_000
+DISCOVERY_POLICY = "legacy-search-day-v1"
 DELAY_BOUNDS = tuple(sorted(set(TARGET_AGES_SECONDS) | {60 * m for m in CUTOFFS}))
 LABEL_QUERY = """
 SELECT c.clip_id, c.created_at, c.first_seen_at, j.job_id, j.status, j.due_at, j.completed_at,
@@ -507,6 +508,44 @@ def discovery(
     }
 
 
+def discovery_exclusions(windows: dict) -> list[str]:
+    reasons = []
+    if windows["known_incomplete_seconds"] or windows["unresolved_problem_seconds"]:
+        reasons.append("unresolved_discovery_problem")
+    if windows["legacy_success_seconds"] < DAY.total_seconds():
+        reasons.append("insufficient_discovery_coverage_evidence")
+    return reasons
+
+
+def primary_discovery_evidence(
+    db: sqlite3.Connection, selection: Selection, watermark: datetime, games: tuple[str, ...]
+) -> dict:
+    # Runs in the export's read transaction, at the exact feature/label watermark.
+    deadline = time.monotonic() + 15
+    result = {"policy": DISCOVERY_POLICY, "status": "VERIFIED", "game_days": []}
+    db.set_progress_handler(lambda: time.monotonic() >= deadline, 10_000)
+    try:
+        for game in sorted(set(games)):
+            days, _ = discovery(db, game, selection.start, selection.end, watermark, deadline)
+            for day, evidence in sorted(days.items()):
+                if (
+                    selection.start <= day
+                    and day + DAY <= selection.end
+                    and day + DAY + MATURITY <= watermark
+                    and not discovery_exclusions(evidence.report())
+                    and not any(
+                        start < day + DAY + MATURITY and end > day
+                        for start, end in selection.outages
+                    )
+                ):
+                    result["game_days"].append({"game_id": game, "day_utc": day.date().isoformat()})
+    except (AuditError, sqlite3.Error, ValueError) as exc:
+        return result | {"status": "UNKNOWN", "game_days": [], "reason": error_code(exc, deadline)}
+    finally:
+        db.set_progress_handler(None, 0)
+    return result
+
+
 def split_options(days: list[datetime], matched: list[int], deadline: float) -> dict:
     targets = {"software": ((MIN_DAYS,) * 3, 0), "experiment": ((7, 3, 7), 500)}
     result = {
@@ -587,10 +626,7 @@ def audit_game(
             reasons.append("utc_day_not_fully_mature")
         if exposed:
             reasons.append("declared_outage_in_creation_or_observation_period")
-        if windows["known_incomplete_seconds"] or windows["unresolved_problem_seconds"]:
-            reasons.append("unresolved_discovery_problem")
-        if windows["legacy_success_seconds"] < 86400:
-            reasons.append("insufficient_discovery_coverage_evidence")
+        reasons.extend(discovery_exclusions(windows))
         if not cohort.labels:
             reasons.append("no_clips")
         elif not cohort.labels["valid"]:

@@ -6,7 +6,7 @@ import csv
 import io
 import json
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import sha256
 from math import isfinite, log1p, log2
@@ -16,7 +16,7 @@ from statistics import mean
 from viralclip.dataset import CUTOFFS, FEATURES, HORIZON, TOLERANCE, ignored_output, write_json
 from viralclip.storage.database import parse_utc, to_utc_iso
 
-VERSION = "2b.2"
+VERSION = "2b.3"
 MATURITY = HORIZON + TOLERANCE
 DAY = timedelta(days=1)
 MIN_DAYS = 2
@@ -66,6 +66,7 @@ class Inputs:
     fingerprints: list[dict]
     input_candidates: int
     input_outcomes: int
+    primary_clips: set[str] = field(default_factory=set)
 
 
 def _csv(data: bytes) -> list[dict[str, str]]:
@@ -159,6 +160,27 @@ def _outcome(row: dict[str, str], clip: Candidate, watermark: datetime) -> Outco
     )
 
 
+def _primary_days(coverage: dict, window: SourceWindow) -> set[tuple[str, datetime]]:
+    from viralclip.m2_audit import DISCOVERY_POLICY, utc_day
+
+    evidence = coverage["primary_discovery"]
+    if evidence["policy"] != DISCOVERY_POLICY or evidence["status"] not in ("VERIFIED", "UNKNOWN"):
+        raise ValueError("Unsupported primary discovery evidence")
+    days = set()
+    for item in evidence["game_days"]:
+        day = utc_day(item["day_utc"])
+        game = item["game_id"]
+        if (
+            evidence["status"] != "VERIFIED"
+            or game not in window.games
+            or not window.start <= day < day + DAY <= min(window.end, window.watermark - MATURITY)
+            or (game, day) in days
+        ):
+            raise ValueError("Invalid primary discovery game/day")
+        days.add((game, day))
+    return days
+
+
 def read_inputs(directories: list[Path]) -> Inputs:
     inputs = Inputs({}, {}, {}, [], set(), [], 0, 0)
     clip_identity: dict[str, Candidate] = {}
@@ -169,14 +191,14 @@ def read_inputs(directories: list[Path]) -> Inputs:
         raw_manifest = (directory / "manifest.json").read_bytes()
         manifest = json.loads(raw_manifest)
         if (
-            manifest["extraction_version"] not in ("2a.1", "2a.2")
+            manifest["extraction_version"] not in ("2a.1", "2a.2", "2a.3")
             or manifest["cutoffs_minutes"] != list(CUTOFFS)
             or not set(FEATURES) <= set(manifest["model_feature_columns"])
             or manifest["rules"]["label_window_age_seconds_inclusive"] != [86400, 86700]
         ):
             raise ValueError("Unsupported dataset manifest")
         names = {"candidates.csv", "outcomes.csv", "dataset.csv", "coverage.json"}
-        if manifest["extraction_version"] == "2a.2":
+        if manifest["extraction_version"] != "2a.1":
             names.add("broadcasters.csv")
         contents = {}
         for name in sorted(names):
@@ -202,7 +224,8 @@ def read_inputs(directories: list[Path]) -> Inputs:
             }
         )
         outages = []
-        for outage in json.loads(contents["coverage.json"])["outages"]:
+        coverage = json.loads(contents["coverage.json"])
+        for outage in coverage["outages"]:
             start, end = parse_utc(outage["start"]), parse_utc(outage["end"])
             if start >= end:
                 raise ValueError("Invalid declared outage interval")
@@ -232,8 +255,14 @@ def read_inputs(directories: list[Path]) -> Inputs:
 
         local_ids = {i for i, _ in local}
         games = window.games or tuple(sorted({row.game_id for row in local.values()}))
-        inputs.windows.append(
-            SourceWindow(window.start, window.end, window.watermark, games, tuple(outages))
+        source_window = SourceWindow(
+            window.start, window.end, window.watermark, games, tuple(outages)
+        )
+        inputs.windows.append(source_window)
+        primary_days = (
+            _primary_days(coverage, source_window)
+            if manifest["extraction_version"] == "2a.3"
+            else set()
         )
         outcomes = _csv(contents["outcomes.csv"])
         if (
@@ -246,7 +275,10 @@ def read_inputs(directories: list[Path]) -> Inputs:
         inputs.input_outcomes += len(outcomes)
         for row in outcomes:
             clip_id = row["clip_id"]
-            outcome = _outcome(row, clip_identity[clip_id], window.watermark)
+            clip = clip_identity[clip_id]
+            outcome = _outcome(row, clip, window.watermark)
+            if outcome.status == "valid" and (clip.game_id, clip.day) in primary_days:
+                inputs.primary_clips.add(clip_id)
             previous = inputs.outcomes.get(clip_id)
             if (
                 previous
@@ -384,7 +416,7 @@ def _period(
     for clip_id in sorted(matched):
         row = reference[clip_id]
         game_day = (row.game_id, row.day)
-        if game_day in covered_days:
+        if game_day in covered_days and clip_id in inputs.primary_clips:
             grouped[game_day].append(clip_id)
     rankable = {
         key
@@ -406,6 +438,7 @@ def _period(
             for game in sorted({key for key, _ in all_games_days})
         },
         "matched_labeled_clips": len(matched),
+        "primary_matched_labeled_clips": sum(len(grouped[key]) for key in rankable),
         "by_cutoff_minutes": counts,
     }
     return report, eligible, matched, rankable
@@ -450,8 +483,10 @@ def _scores(period, inputs: Inputs, k: int) -> dict:
             pools = defaultdict(list)
             for row in candidates.values():
                 game_day = (row.game_id, row.day)
-                if game_day in rankable and (
-                    population == "cutoff_eligible" or row.clip_id in matched
+                if (
+                    row.clip_id in inputs.primary_clips
+                    and game_day in rankable
+                    and (population == "cutoff_eligible" or row.clip_id in matched)
                 ):
                     pools[game_day].append(row)
             metrics = []
@@ -577,7 +612,7 @@ def evaluate(
             ]
             for game in games
         },
-        "coverage_basis": "Declared extraction windows and outages. Discovery admission requires the M2 audit.",
+        "coverage_basis": "Primary metrics require discovery evidence and label provenance from the hashed export.",
     }
 
 

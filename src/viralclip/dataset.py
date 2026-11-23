@@ -16,7 +16,7 @@ from pathlib import Path
 
 from viralclip.storage.database import parse_utc, to_utc_iso
 
-VERSION = "2a.2"
+VERSION = "2a.3"
 CUTOFFS = (30, 35, 60, 65)
 HORIZON = timedelta(hours=24)
 TOLERANCE = timedelta(minutes=5)
@@ -91,9 +91,12 @@ class Source:
     clips: list[Clip]
     observations: dict[str, list[Observation]]
     jobs: dict[str, sqlite3.Row]
+    primary_discovery: dict
 
 
 def read_source(path: Path, selection: Selection) -> Source:
+    from viralclip.m2_audit import primary_discovery_evidence
+
     if selection.start >= selection.end or any(a >= b for a, b in selection.outages):
         raise ValueError("Creation and outage windows must have start before end")
     uri = path.resolve().as_uri() + "?mode=ro"
@@ -162,7 +165,9 @@ def read_source(path: Path, selection: Selection) -> Source:
                     """,
                     (clip.clip_id,),
                 ).fetchone()
-    return Source(watermark, latest, max_id, schema, clips, observations, jobs)
+        games = selection.games or tuple(sorted({clip.game_id for clip in clips}))
+        primary_discovery = primary_discovery_evidence(db, selection, watermark, games)
+    return Source(watermark, latest, max_id, schema, clips, observations, jobs, primary_discovery)
 
 
 def candidate(
@@ -381,6 +386,7 @@ def extract(path: Path, selection: Selection, output: Path) -> dict:
         "mature_outcomes": len(clips) - status["immature"],
         "outcome_status": dict(status),
         "outages": _outage_coverage(source, selection, outcomes),
+        "primary_discovery": source.primary_discovery,
         "by_cutoff_minutes": {
             m: _coverage([r for r in candidates if r["cutoff_minutes"] == m], outcomes, clips)
             for m in CUTOFFS

@@ -140,9 +140,13 @@ resta una proposta da fissare prima di accedere ai risultati.
 
 L'evaluator applica il minimo per gioco, le interruzioni dichiarate per
 gioco e controlli di derivazione sulle feature dei baseline. Gli export
-esistenti attestano gli intervalli di estrazione. Collegare le giornate
-ammesse dall'audit agli hash degli export prima di certificare il
-benchmark. Le automazioni leggono lo stato JSON di insufficienza.
+2a.3 includono le giornate di discovery ammesse nel `coverage.json`
+verificato dall'hash nel manifest. L'evidenza è calcolata nella stessa
+transazione e allo stesso watermark dei dati estratti. Una riga
+proveniente solo da un altro export senza evidenza rimane diagnostica,
+anche se appartiene allo stesso gioco e giorno. I pool richiedono comunque
+outcome maturi, embargo e livelli minimi. Gli export 2a.1 e 2a.2 restano
+leggibili per la diagnosi. Le automazioni leggono lo stato JSON di insufficienza.
 Riportare incertezza tra giornate e dimensioni dei pool. Recall@10 vale 1
 per qualsiasi ordine in un pool di dieci clip.
 

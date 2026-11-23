@@ -47,6 +47,7 @@ def examples(start=START, end=START + 10 * DAY):
 
 
 def add_clip(inputs, clip_id, created, views, *, late=False, sparse=False, game="42"):
+    inputs.primary_clips.add(clip_id)
     inputs.outcomes[clip_id] = Outcome("valid", views, created + DAY)
     inputs.broadcasters[clip_id] = str(int(views) % 2)
     inputs.input_outcomes += 1
@@ -218,6 +219,47 @@ def test_self_consistent_csv_hash_cannot_authorize_fabricated_growth(replays):
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="Baseline growth disagrees"):
         read_inputs([left])
+
+
+def test_primary_discovery_evidence_is_bound_to_the_export_that_supplied_rows(
+    tmp_path, monkeypatch
+):
+    subprocess.run(["git", "init", "--quiet", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text("data/\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    selection = Selection(START, START + DAY, ("42",), START + DAY + MATURITY)
+    for name, covered in (("attested", True), ("diagnostic", False)):
+        db = Database(tmp_path / f"{name}.sqlite3")
+        try:
+            db.upsert_game("42", "Synthetic", START)
+            if covered:
+                run = db.create_run("42", START, START + DAY, START + DAY)
+                db.finish_run(run, START + DAY, 1, 1, 0, 0)
+            db.record_clip(Collector._parse_clip(clip(name, created_at=START)), "42", START, None)
+            job = db.connection.execute(
+                "SELECT job_id FROM jobs WHERE clip_id=? AND target_age_seconds=86400", (name,)
+            ).fetchone()[0]
+            db.add_scheduled_snapshot(name, START + DAY, 100, 86400, [job])
+            db.record_clip(
+                Collector._parse_clip(clip("stamp", created_at=selection.watermark)),
+                "42",
+                selection.watermark,
+                None,
+            )
+        finally:
+            db.close()
+        export = tmp_path / "data" / name
+        coverage = extract(db.path, selection, export)
+        assert bool(coverage["primary_discovery"]["game_days"]) is covered
+    primary, diagnostic = (tmp_path / "data" / name for name in ("attested", "diagnostic"))
+    inputs = read_inputs([primary, diagnostic])
+    assert inputs.primary_clips == {"attested"}
+    assert evaluate(inputs, None, None, 10)["overall"]["matched_labeled_clips"] == 2
+
+    coverage_path = primary / "coverage.json"
+    coverage_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="Dataset hash mismatch for coverage.json"):
+        read_inputs([primary])
 
 
 def test_overlap_deduplicates_and_report_manifest_is_reproducible(replays, monkeypatch, capsys):
