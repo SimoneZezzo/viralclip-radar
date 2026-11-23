@@ -188,6 +188,7 @@ def test_extra_overlap_extends_only_its_cursor_within_the_time_budget(
 ):
     previous = bucket_start(NOW) - BUCKET
     visited = []
+    events = []
     ticks = iter((0.0, 2.0)) if budget_expires else iter([0.0] * 10)
 
     def handler(request):
@@ -204,11 +205,22 @@ def test_extra_overlap_extends_only_its_cursor_within_the_time_budget(
             clock=lambda: NOW,
             monotonic=lambda: next(ticks),
             gta_vi_overlap=GtaViOverlap(pages, 1),
+            overlap_events=events.append,
         ).discover(APPROVED_GAME_ID)
         assert visited.count(previous) == expected
         assert len(visited) == expected + 2  # Current and historical allocations remain available.
         overlap = next(row for row in attempts(db) if row[2] == to_utc_iso(previous))
         assert overlap[1] == ("cursor_exhausted" if expected == 9 else "budget")
+        if pages == 7:
+            assert events == []
+        elif budget_expires:
+            assert [(e["page"], e["result"]) for e in events] == [(8, "time_budget")]
+        else:
+            assert [(e["page"], e["result"], e["additional_ids"]) for e in events] == [
+                (8, "received", 100),
+                (9, "received", 100),
+            ]
+            assert all(e["observed_at"] == to_utc_iso(NOW) for e in events)
         assert checkpoint(db) == to_utc_iso(STALLED)
 
 

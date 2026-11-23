@@ -38,6 +38,7 @@ class Collector:
         clock: Callable[[], datetime] = utc_now,
         monotonic: Callable[[], float] = time.monotonic,
         gta_vi_overlap: GtaViOverlap = DEFAULT_GTA_VI_OVERLAP,
+        overlap_events: Callable[[dict[str, object]], None] | None = None,
     ):
         self.database = database
         self.twitch = twitch
@@ -45,6 +46,7 @@ class Collector:
         self.clock = clock
         self.monotonic = monotonic
         self.gta_vi_overlap = gta_vi_overlap
+        self.overlap_events = overlap_events
         self.database.acquire_collector_lock()
         self.database.recover_running_jobs()
 
@@ -142,6 +144,21 @@ class Collector:
         rank_warnings: Counter = Counter()
         outcome = "page_limit" if budget == GTA_VI_RECENT_PAGES else "budget"
 
+        def report_extra(page_number: int, result: str, **details: object) -> None:
+            if self.overlap_events is not None:
+                try:
+                    self.overlap_events(
+                        {
+                            "event": "gta_vi_overlap_page",
+                            "run_id": run,
+                            "page": page_number,
+                            "result": result,
+                            **details,
+                        }
+                    )
+                except Exception:  # noqa: BLE001
+                    LOG.warning("GTA VI overlap page telemetry unavailable")
+
         def finish(error_summary: str | None = None) -> None:
             self.database.finish_run(
                 run,
@@ -171,6 +188,7 @@ class Collector:
                 self.collect_due_snapshots()
                 timeout = None if deadline is None else deadline - self.monotonic()
                 if timeout is not None and timeout <= 0:
+                    report_extra(index + 1, "time_budget")
                     LOG.warning("GTA VI overlap extra pages stopped at their time budget")
                     break
                 requested += 1
@@ -184,6 +202,7 @@ class Collector:
                     )
                 except TwitchRequestDeferred:
                     requested -= 1
+                    report_extra(index + 1, "auth_or_rate_budget")
                     LOG.warning("GTA VI overlap extra page deferred for Twitch auth or rate budget")
                     break
                 page = self.twitch.parse_data(payload)
@@ -192,6 +211,7 @@ class Collector:
                 pages += 1
                 observed_at = self.clock()
                 raw += len(page)
+                prior_unique, prior_new = len(unique_ids), new
                 new_wire_ids = False
                 outside_query = False
                 parsed = [self._parse_clip(item) for item in page]
@@ -219,6 +239,14 @@ class Collector:
                             unique_ids.add(clip_id)
                             new += self.database.record_clip(clip, game_id, observed_at, run)
                 cursor = self.twitch.parse_cursor(payload)
+                if index >= budget:
+                    report_extra(
+                        index + 1,
+                        "received",
+                        observed_at=to_utc_iso(observed_at),
+                        additional_ids=len(unique_ids) - prior_unique,
+                        new_to_db=new - prior_new,
+                    )
                 if outside_query or (cursor and (cursor in cursors or not new_wire_ids)):
                     outcome = "pagination_anomaly"
                     break

@@ -154,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
                 twitch,
                 lookback_minutes=settings.discovery_lookback_minutes,
                 gta_vi_overlap=settings.gta_vi_overlap,
+                overlap_events=http_log,
             )
             if args.once:
                 collector.collect_cycle(games, game_ids)
