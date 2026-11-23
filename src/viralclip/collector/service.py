@@ -103,8 +103,22 @@ class Collector:
         wire_ids: set[str] = set()
         unique_ids: set[str] = set()
         requested = pages = raw = pertinent = repeated = new = 0
-        error = None
         outcome = "page_limit" if budget == GTA_VI_RECENT_PAGES else "budget"
+
+        def finish(error_summary: str | None = None) -> None:
+            self.database.finish_run(
+                run,
+                self.clock(),
+                requested,
+                pages,
+                raw,
+                new,
+                truncated=outcome not in ("cursor_exhausted", "error"),
+                error=error_summary,
+                unique=len(unique_ids),
+                scan=(lane, outcome, pertinent, repeated),
+            )
+
         try:
             for _ in range(budget):
                 self.collect_due_snapshots()
@@ -115,8 +129,8 @@ class Collector:
                     ended_at=query_start + BUCKET,
                     after=cursor,
                 )
-                pages += 1
                 page = self.twitch.parse_data(payload)
+                pages += 1
                 observed_at = self.clock()
                 raw += len(page)
                 new_wire_ids = False
@@ -156,23 +170,11 @@ class Collector:
                     )
                     break
                 cursors.add(cursor)
-        except TwitchAPIError as exc:
-            error = exc
+        except Exception as exc:
             outcome = "error"
-        self.database.finish_run(
-            run,
-            self.clock(),
-            requested,
-            pages,
-            raw,
-            new,
-            truncated=outcome not in ("cursor_exhausted", "error"),
-            error=str(error) if error else None,
-            unique=len(unique_ids),
-            scan=(lane, outcome, pertinent, repeated),
-        )
-        if error:
-            raise error
+            finish(str(exc) if isinstance(exc, TwitchAPIError) else type(exc).__name__)
+            raise
+        finish()
         return new
 
     def _discover_window(

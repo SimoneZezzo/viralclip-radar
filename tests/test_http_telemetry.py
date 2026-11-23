@@ -109,6 +109,31 @@ def test_http_retry_sequence_rate_pressure_and_secret_exclusion(tmp_path):
     ]
 
 
+def test_nonfinite_throttle_headers_do_not_disable_retry_or_future_requests():
+    sleeps = []
+    calls = iter(
+        [
+            httpx.Response(429, headers={"Retry-After": "inf", "Ratelimit-Reset": "inf"}),
+            httpx.Response(
+                200,
+                json={"data": []},
+                headers={"Ratelimit-Remaining": "0", "Ratelimit-Reset": "inf"},
+            ),
+            httpx.Response(200, json={"data": []}),
+        ]
+    )
+    with httpx.Client(transport=httpx.MockTransport(lambda _: next(calls))) as http:
+        client = TwitchClient(
+            "fixture", "fixture", http=http, sleep=sleeps.append, jitter=lambda *_: 0
+        )
+        client._token = "fixture"
+        client._token_expires_at = client.wall_clock() + 3600
+        client._validated_at = client.wall_clock()
+        assert client.get_clips(game_id="42") == {"data": []}
+        assert client.get_clips(game_id="42") == {"data": []}
+    assert sleeps == [1]
+
+
 @pytest.mark.parametrize("refresh_fails", [False, True])
 def test_oauth_refresh_after_401_and_invalid_response(refresh_fails):
     events = []

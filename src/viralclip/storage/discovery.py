@@ -41,6 +41,7 @@ def scan_progress(db: Connection, game_id: str) -> tuple[datetime | None, dateti
             SELECT MAX(r.window_end) FROM gta_vi_scan_attempts s
             JOIN collection_runs r USING (run_id)
             WHERE s.lane = ? AND r.game_id = ? AND r.request_count > 0
+              AND r.pages_seen > 0 AND s.outcome <> 'error'
             """,
             (lane, game_id),
         ).fetchone()[0]

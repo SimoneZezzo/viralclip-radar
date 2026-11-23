@@ -253,7 +253,7 @@ def test_filter_and_deduplicate_without_certifying_coverage(
         assert checkpoint(db) == to_utc_iso(STALLED)
 
 
-@pytest.mark.parametrize("failure", ["timeout", "http", "invalid_pagination"])
+@pytest.mark.parametrize("failure", ["timeout", "http", "invalid_pagination", "invalid_data"])
 def test_interrupted_pagination_records_error_with_bounded_retries(tmp_path, failure):
     requests = []
 
@@ -265,6 +265,8 @@ def test_interrupted_pagination_records_error_with_bounded_retries(tmp_path, fai
             raise httpx.ReadTimeout("fixture")
         if failure == "http":
             return httpx.Response(503)
+        if failure == "invalid_data":
+            return httpx.Response(200, json={"data": {}})
         return httpx.Response(200, json={"data": [], "pagination": []})
 
     twitch = mocked_client(handler)
@@ -272,9 +274,60 @@ def test_interrupted_pagination_records_error_with_bounded_retries(tmp_path, fai
         seed(db)
         with pytest.raises(TwitchAPIError):
             Collector(db, twitch, clock=lambda: NOW).discover(APPROVED_GAME_ID)
-        assert len(requests) == (2 if failure == "invalid_pagination" else 5)
+        assert len(requests) == (2 if failure.startswith("invalid_") else 5)
         assert attempts(db)[0][0:2] == ("recent", "error")
         assert attempts(db)[0][4:8] == (2, 1, 1, 1)
+        assert checkpoint(db) == to_utc_iso(STALLED)
+
+
+def test_unexpected_discovery_exception_finalizes_run_and_preserves_error(tmp_path, monkeypatch):
+    twitch = mocked_client(lambda _: response())
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        collector = Collector(db, twitch, clock=lambda: NOW)
+
+        def fail(*_args):
+            raise RuntimeError("internal detail")
+
+        monkeypatch.setattr(collector, "collect_due_snapshots", fail)
+        with pytest.raises(RuntimeError, match="internal detail"):
+            collector.discover(APPROVED_GAME_ID)
+        assert attempts(db)[0][:2] == ("recent", "error")
+        assert (
+            db.connection.execute(
+                "SELECT error_summary FROM collection_runs WHERE status='error'"
+            ).fetchone()[0]
+            == "RuntimeError"
+        )
+        assert scan_progress(db.connection, APPROVED_GAME_ID) == (None, None)
+
+
+def test_failed_history_window_is_revisited_next_cycle(tmp_path):
+    history_calls = []
+    fail_history = True
+
+    def handler(request):
+        start, _ = window(request)
+        if start == bucket_start(STALLED):
+            history_calls.append(start)
+            if fail_history:
+                return httpx.Response(503)
+        return response()
+
+    twitch = mocked_client(handler)
+    with closing(Database(tmp_path / "vi.sqlite3")) as db, twitch.http:
+        seed(db)
+        collector = Collector(db, twitch, clock=lambda: NOW)
+        with pytest.raises(TwitchAPIError):
+            collector.discover(APPROVED_GAME_ID)
+        assert scan_progress(db.connection, APPROVED_GAME_ID)[1] is None
+        assert attempts(db)[-1][:2] == ("history", "error")
+        before = len(history_calls)
+        fail_history = False
+        collector.discover(APPROVED_GAME_ID)
+        assert len(history_calls) == before + 1
+        assert attempts(db)[-1][:3] == ("history", "cursor_exhausted", to_utc_iso(STALLED))
+        assert scan_progress(db.connection, APPROVED_GAME_ID)[1] == bucket_start(STALLED) + BUCKET
         assert checkpoint(db) == to_utc_iso(STALLED)
 
 

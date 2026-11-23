@@ -248,7 +248,7 @@ class TwitchClient:
                     waits.append(float(reset) - self.wall_clock())
                 except ValueError:
                     pass
-            return max(waits)
+            return max(wait for wait in waits if isfinite(wait))
         return min(30.0, 2**attempt) + self.jitter(0.0, 0.25)
 
     def _get(self, path: str, params: dict | list[tuple[str, str]], *, endpoint: str) -> dict:
@@ -284,9 +284,12 @@ class TwitchClient:
             reset_header = response.headers.get("Ratelimit-Reset")
             if remaining_header == "0" and reset_header:
                 try:
-                    self._rate_limit_reset_at = float(reset_header)
+                    reset_at = float(reset_header)
                 except ValueError:
                     pass
+                else:
+                    if isfinite(reset_at):
+                        self._rate_limit_reset_at = reset_at
             if response.status_code == 401 and not refreshed:
                 token = self._get_token(force=True)
                 self._validate_token(token)
