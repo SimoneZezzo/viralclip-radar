@@ -4,6 +4,15 @@ Last updated 2026-11-21 (Europe/Rome).
 
 ## Current priority
 
+**Production follow-up, November 23 at 11:30 UTC.** Both collectors
+advanced with zero failed jobs and no 429s in the sampled hour.
+GTA VI remains at eight overlap pages. Since the handoff, page eight
+added 59 previously unseen IDs within 60m. In 28 of 31 overlap runs,
+known omissions remained after the cursor ended. All real export and
+recommendation hashes reproduced. The canary label and 48h checks
+both remain pending.
+[Follow-up evidence and gate commands](docs/PROJECT_HISTORY.md#2026-11-23-discovery-and-label-follow-up)
+
 **GTA VI observed-at-cutoff validated on real exports.** Three private
 2a.3 exports cover the mature November 19–21 cohorts. At 60m they contain
 253,820 clips with valid features and 24h labels out of 258,244 known
