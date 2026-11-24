@@ -9,23 +9,19 @@ their real timestamps. Model validation requires mature chronological cohorts.
 Run `uv run --offline --no-sync viralclip demo` from the checkout and open
 `http://127.0.0.1:8765`. Stop the local server with Ctrl+C.
 
-The page reads a synthetic, append-only ranking register at
-`data/demo/predictions.sqlite3`. GTA VI shows simulated model scores and
-GTA V shows baseline scores. The score runs from 1 to 100 relative to the
-selected game and pool. Estimated views are an internal input to the
-simulated model. The media buttons demonstrate synthetic download and a
-local 9:16 export. **One shortcut too many** shows when to use a local
-video you already have permission to edit. **Coastal drift** simulates a
-render failure on the first attempt and allows a retry.
+The demo builds a collector database holding only synthetic clips, labeled
+`SYNTHETIC / NOT REAL TWITCH DATA`, ranks it through the live ranking
+registry and stores the runs in `data/demo/registry-v3.sqlite3`. GTA VI
+shows simulated model scores and GTA V shows `latest_views` baseline scores.
+The score runs from 1 to 100 relative to the selected game and pool.
+Estimated views are an internal input to the simulated model.
 
-Media processing uses browser Canvas and MediaRecorder. For a supplied
-video, it produces a silent sample of up to four seconds with example
-captions. Source video and generated files stay on the computer. The demo
-uses simulated providers and needs no account or credentials.
-
-The planned live edit opens in the editor's own reviewer session. The editor
-authorizes the external editor connector through their own external editor account.
-[external editor connector](https://example.invalid/editor/mcp)
+The service only selects clips. Each clip card offers the clip link with
+**Copy clip link** and **Open on Twitch**, plus links to external editors
+the user chooses and pays for. The site never downloads, uploads or edits
+video. Synthetic clips have no Twitch page, so their link uses the reserved
+`example.invalid` domain and **Open on Twitch** stays disabled with a reason.
+The demo needs no account or credentials.
 
 ## Quick start (Windows PowerShell)
 

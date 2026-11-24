@@ -40,7 +40,7 @@ spacing: { base: 4px, xs: 8px, sm: 12px, md: 16px, lg: 24px, xl: 48px }
 
 Read this file only for frontend or UI work. The current UI is the local
 portfolio demo in `src/viralclip/demo_web/` (`index.html`, `styles.css`,
-`app.js`, `media.js`) served by `src/viralclip/demo.py`. Future UIs, such as
+`app.js`) served by `src/viralclip/demo.py`. Future UIs, such as
 the M4 dashboard, follow the same rules.
 
 ## Product identity
@@ -144,17 +144,21 @@ demo works offline). Mono: `"IBM Plex Mono", Consolas, monospace`.
   channel, score. Hover `surface-2`; selected uses `aria-pressed="true"`,
   `surface-3` and `hairline-accent`. Score in accent; a missing score shows
   "—" in `ink-subtle` via `.is-missing`.
-- **Preview.** 16:9, 8px radius, dark scrim at the bottom for the tag, round
-  play button. A real video replaces the poster and hides the tag.
+- **Preview.** 16:9 poster, 8px radius, dark scrim at the bottom for the
+  tag. The site plays no video.
 - **Clip record.** `dl` with `meta` labels left and mono values right inside a
-  hairline box: version, score, clip cutoff.
+  hairline box: version, score, clip cutoff, clip link.
+- **Clip actions.** Primary "Copy clip link"; secondary "Open on Twitch"
+  link, disabled with `aria-disabled="true"` and a stated reason when the
+  clip has no Twitch page. An "Edit in your own editor" block lists
+  external editors as plain links, with no integration.
 - **Buttons.** `primary`: accent fill, `on-accent` text, grows to fill the
   row; one per view. `secondary`: `control` fill with `hairline-strong`
   border. Height ≥40px. Disabled at 0.49 opacity with no hover change, and
   always paired with a visible reason.
 - **Inputs.** `surface-1` select with a strong border, 8px radius, ≥44px tall.
-- **Job panel.** `surface-3` with an accent-tinted border; `role="status"` and
-  `aria-live="polite"`; errors switch to `danger`.
+- **Status line.** `meta` text with `role="status"` and `aria-live="polite"`
+  for copy results and link availability.
 
 ## Truthful states
 
@@ -170,8 +174,9 @@ These rules come from the product's research invariants and the
   zero.
 - Scores are relative 1–100 within a pool; the UI shows no view counts and
   does not call scores probabilities before calibration.
-- Disabled download or editing states say why (for example, missing creator
-  permission). Media actions stay within the authorized local-file path.
+- The site handles no media: it shows the clip link and external editors
+  only. A disabled link says why, and the card reminds the user to ask the
+  creator before publishing.
 - Timestamps are UTC and appear in mono in the record.
 
 ## Accessibility and interaction

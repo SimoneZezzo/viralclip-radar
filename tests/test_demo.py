@@ -32,8 +32,10 @@ def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(t
     assert all(len(row["observation_ids"]) == 1 for row in rows)
     assert rows[0]["latest_observed_at"] < rows[0]["prediction_at"] < model["run"]["scored_at"]
     assert rows[-1]["score"] is None
-    assert rows[2]["media"] == {"download": False, "edit_original": False, "accept_file": True}
-    assert rows[4]["media"] == {"download": False, "edit_original": False, "accept_file": False}
+    assert all("media" not in row and "scenario" not in row for row in rows)
+    assert rows[0]["twitch_url"] is None
+    assert rows[0]["url"] == "https://example.invalid/synthetic-clips/" + rows[0]["clip_id"]
+    assert model["editors"][0]["name"] == "external editor"
     assert [row["score"] for row in baseline["predictions"]] == [100, 75, 31, 1]
 
     with closing(sqlite3.connect(path)) as db:
@@ -64,7 +66,7 @@ def test_demo_seeds_a_new_fixture_revision_without_replacing_existing_runs(tmp_p
         original = read_ranking(path, GTA_VI_GAME_ID)
 
     prepare_registry(path)
-    assert read_ranking(path, GTA_VI_GAME_ID)["run"]["run_id"] == f"fixture-v3:{GTA_VI_GAME_ID}"
+    assert read_ranking(path, GTA_VI_GAME_ID)["run"]["run_id"] == f"fixture-v4:{GTA_VI_GAME_ID}"
     monkeypatch.setattr("viralclip.demo.FIXTURE_REVISION", "fixture-v1")
     assert read_ranking(path, GTA_VI_GAME_ID) == original
 
@@ -92,8 +94,12 @@ def test_demo_serves_only_supported_games_and_static_assets(tmp_path):
                 assert response.status == 200
                 page = response.read()
                 assert b'lang="en"' in page
-                assert b"Edit with reviewer + external editor" in page
-                assert b"Use an authorized local video" in page
+                assert b"Copy clip link" in page and b"Edit in your own editor" in page
+                assert b"Download" not in page
+                client.request("GET", "/media.js")
+                response = client.getresponse()
+                response.read()
+                assert response.status == 404
                 client.request("GET", "/gameplay.jpg")
                 response = client.getresponse()
                 assert response.read().startswith(b"\xff\xd8\xff")

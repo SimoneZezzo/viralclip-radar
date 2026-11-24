@@ -15,28 +15,38 @@ from viralclip.storage.database import Database, to_utc_iso
 
 REGISTRY = Path("data/demo/registry-v3.sqlite3")
 ASSETS = Path(__file__).with_name("demo_web")
-FIXTURE_REVISION = "fixture-v3"
+FIXTURE_REVISION = "fixture-v4"
 CUTOFF = 60
 DAY = datetime(2026, 11, 22, tzinfo=UTC)
 GAMES = {GTA_VI_GAME_ID: "GTA VI", "32982": "GTA V"}
 SIMULATED_VERSION = "fixture:potential:v3"
 
+# Suggested external editors. The site only links to them: it has no integration,
+# sends them nothing, and the user picks and pays for the editor.
+EDITORS = (
+    {"name": "external editor", "url": "https://example.invalid/editor/"},
+    {"name": "CapCut", "url": "https://www.capcut.com/"},
+    {"name": "external editor", "url": "https://example.invalid/editor/"},
+    {"name": "external editor", "url": "https://example.invalid/editor/"},
+)
+SYNTHETIC_LINK = "https://example.invalid/synthetic-clips/"
+
 # title, synthetic channel, duration, age-52 view count, estimated views feature,
-# media scenario, preview scene
+# preview scene
 CLIPS = {
     GTA_VI_GAME_ID: (
-        ("Overpass getaway", "neon_driver", 28, 128, 1840, "open", 0),
-        ("Parking with inches to spare", "city_loop", 19, 96, 1420, "open", 1),
-        ("One shortcut too many", "last_corner", 34, 118, 1190, "file", 2),
-        ("Coastal drift", "ocean_shift", 22, 71, 860, "render_error", 3),
-        ("Back in the rain", "after_rain", 41, 56, 620, "blocked", 4),
-        ("One last lap", "neon_driver", 26, 34, None, "open", 5),
+        ("Overpass getaway", "neon_driver", 28, 128, 1840, 0),
+        ("Parking with inches to spare", "city_loop", 19, 96, 1420, 1),
+        ("One shortcut too many", "last_corner", 34, 118, 1190, 2),
+        ("Coastal drift", "ocean_shift", 22, 71, 860, 3),
+        ("Back in the rain", "after_rain", 41, 56, 620, 4),
+        ("One last lap", "neon_driver", 26, 34, None, 5),
     ),
     "32982": (
-        ("Rooftop landing", "roof_runner", 21, 98, None, "open", 2),
-        ("The impossible turn", "west_coast", 35, 79, None, "file", 0),
-        ("Out of the tunnel", "late_shift", 32, 45, None, "render_error", 4),
-        ("Sunset lap", "roof_runner", 24, 22, None, "blocked", 3),
+        ("Rooftop landing", "roof_runner", 21, 98, None, 2),
+        ("The impossible turn", "west_coast", 35, 79, None, 0),
+        ("Out of the tunnel", "late_shift", 32, 45, None, 4),
+        ("Sunset lap", "roof_runner", 24, 22, None, 3),
     ),
 }
 
@@ -55,14 +65,11 @@ def fixture_clips() -> dict[str, dict]:
             "duration": duration,
             "views": views,
             "estimate": estimate,
-            "scenario": scenario,
             "scene": scene,
             "created": DAY + timedelta(hours=18, minutes=4 * index),
         }
         for game_id, clips in CLIPS.items()
-        for index, (title, channel, duration, views, estimate, scenario, scene) in enumerate(
-            clips, 1
-        )
+        for index, (title, channel, duration, views, estimate, scene) in enumerate(clips, 1)
     }
 
 
@@ -141,21 +148,16 @@ def read_ranking(path: Path, game_id: str) -> dict:
     predictions = []
     for row in result["predictions"]:
         clip = clips[row["clip_id"]]
-        demo_open = clip["scenario"] in ("open", "render_error")
         predictions.append(
             row
-            | {key: clip[key] for key in ("title", "channel", "duration", "scenario", "scene")}
-            | {
-                "media": {
-                    "download": demo_open,
-                    "edit_original": demo_open,
-                    "accept_file": clip["scenario"] != "blocked",
-                }
-            }
+            | {key: clip[key] for key in ("title", "channel", "duration", "scene")}
+            # Synthetic clips have no Twitch page; real rankings carry the clip's Twitch URL.
+            | {"url": SYNTHETIC_LINK + row["clip_id"], "twitch_url": None}
         )
     return {
         "synthetic": True,
         "games": [{"id": key, "name": name} for key, name in GAMES.items()],
+        "editors": list(EDITORS),
         "run": run,
         "predictions": predictions,
     }
@@ -166,7 +168,6 @@ def handler(registry: Path) -> type[BaseHTTPRequestHandler]:
         "/": ("index.html", "text/html; charset=utf-8"),
         "/styles.css": ("styles.css", "text/css; charset=utf-8"),
         "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-        "/media.js": ("media.js", "text/javascript; charset=utf-8"),
         "/gameplay.jpg": ("gameplay.jpg", "image/jpeg"),
     }
 
@@ -194,8 +195,7 @@ def handler(registry: Path) -> type[BaseHTTPRequestHandler]:
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header(
                 "Content-Security-Policy",
-                "default-src 'self'; media-src 'self' blob:; "
-                "object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+                "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
             )
             self.end_headers()
             self.wfile.write(body)
