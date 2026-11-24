@@ -89,7 +89,8 @@ experiment and reproducibility gates are met.
 ## Next actions
 
 The [action plan](docs/ACTION_PLAN.md) sets the order of work and the split
-between agents. The end goal is a model that helps clippers choose clips whose
+between agents. Open direction questions are argued by reviewer and reviewer in the
+[direction review](docs/DIRECTION_REVIEW.md) before the owner decides. The end goal is a model that helps clippers choose clips whose
 TikTok, Shorts and Reels posts get the most views; Twitch ranking is the
 first signal and the candidate shortlist.
 
@@ -105,10 +106,12 @@ first signal and the candidate shortlist.
    baseline and synthetic inputs.
    [Record draft](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
 5. Social track: YouTube Shorts only, observational (owner decision of
-   November 24). Feasibility is a **conditional GO** pending a 3–4 week pilot;
-   the deciding gate is Google's permission to keep view series beyond 30 days.
-   The pilot needs owner authorization for a Google Cloud project, API key and
-   live collection. Automated posting is deferred to future model validation.
+   November 24). Feasibility is a **conditional GO** pending a 3–4 week pilot
+   decided mainly by matching precision and weekly volume. The design complies
+   without an audit: Twitch features, and YouTube total views refreshed at least
+   every 30 days as the label. The Google Cloud project and restricted key exist
+   (owner report); live collection still needs authorization. Automated posting
+   is deferred to future model validation.
    [Feasibility](docs/YOUTUBE_SHORTS_FEASIBILITY.md) ·
    [Social track](docs/ACTION_PLAN.md#3-due-binari-paralleli)
 
