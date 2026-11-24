@@ -299,7 +299,6 @@ def link_outcomes(
             ):
                 counts["deferred"] = counts.get("deferred", 0) + 1
                 continue
-            counts[status] = counts.get(status, 0) + 1
             records.append(
                 (
                     prediction_id,
@@ -312,18 +311,25 @@ def link_outcomes(
                     result["views_24h"],
                 )
             )
+    linked = 0
     with closing(_connect_registry(registry, collector)) as db, db:
         db.execute("BEGIN IMMEDIATE")
-        db.executemany(
-            """
-            INSERT INTO prediction_outcomes (
-                prediction_id, linked_at, source_watermark, outcome_status, label_job_id,
-                label_snapshot_id, label_observed_at, views_24h
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            records,
-        )
-    return {"linked": len(records), "by_status": dict(sorted(counts.items()))}
+        for record in records:
+            inserted = db.execute(
+                """
+                INSERT INTO prediction_outcomes (
+                    prediction_id, linked_at, source_watermark, outcome_status, label_job_id,
+                    label_snapshot_id, label_observed_at, views_24h
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(prediction_id) DO NOTHING
+                """,
+                record,
+            ).rowcount
+            if inserted:
+                linked += inserted
+                status = record[3]
+                counts[status] = counts.get(status, 0) + 1
+    return {"linked": linked, "by_status": dict(sorted(counts.items()))}
 
 
 def _may_still_settle(job: sqlite3.Row | None, watermark: datetime) -> bool:

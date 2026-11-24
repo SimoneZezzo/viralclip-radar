@@ -207,6 +207,29 @@ def test_outcomes_use_one_snapshot_when_a_retry_starts_during_linking(
     assert result == {"linked": 0, "by_status": {"deferred": 2}}
 
 
+def test_concurrent_outcome_linkers_only_count_new_inserts(source, tmp_path, monkeypatch):
+    registry = tmp_path / "predictions.sqlite3"
+    rank_pool(source.path, registry, "42", DAY_START, 60, scored_at=NOW + 2 * 60 * MINUTE)
+    (job,) = source.connection.execute(
+        "SELECT job_id FROM jobs WHERE clip_id = 'a' AND target_age_seconds = 86400"
+    ).fetchone()
+    source.add_scheduled_snapshot("a", NOW + timedelta(seconds=86460), 7000, 86400, [job])
+    seen(source, "late", timedelta(hours=24, minutes=10), 6000)
+    original = predictions.read_source
+
+    def read_then_link(*args, **kwargs):
+        snapshot = original(*args, **kwargs)
+        monkeypatch.setattr(predictions, "read_source", original)
+        first = link_outcomes(source.path, registry, linked_at=NOW + DAY_SPAN)
+        assert first == {"linked": 1, "by_status": {"deferred": 1, "valid": 1}}
+        return snapshot
+
+    monkeypatch.setattr(predictions, "read_source", read_then_link)
+    second = link_outcomes(source.path, registry, linked_at=NOW + DAY_SPAN)
+    assert second == {"linked": 0, "by_status": {"deferred": 1}}
+    assert len(rows(registry, "SELECT * FROM prediction_outcomes")) == 1
+
+
 def test_registry_cli_ranks_and_prints_the_shortlist(source, tmp_path, monkeypatch, capsys):
     registry = tmp_path / "predictions.sqlite3"
     monkeypatch.setattr(cli, "ignored_registry", lambda path: path)
