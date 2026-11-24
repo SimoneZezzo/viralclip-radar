@@ -10,6 +10,7 @@ from math import log1p, log2
 import pytest
 from test_collector import NOW, clip
 
+from viralclip.benchmark import cutoff_report, freeze, top_overlap
 from viralclip.cli import main
 from viralclip.collector.service import Collector
 from viralclip.dataset import CUTOFFS, Selection, extract
@@ -64,6 +65,53 @@ def add_clip(inputs, clip_id, created, views, *, late=False, sparse=False, game=
             scores if eligible else (None,) * 4,
         )
         inputs.input_candidates += 1
+
+
+def test_benchmark_overlap_counts_boundary_ties_without_exceeding_one():
+    order = [
+        Candidate(clip_id, "42", START, 60, "eligible", "", (None,) * 4)
+        for clip_id in ("missing", "a", "d", "b", "c")
+    ]
+    views = {"a": 5, "b": 3, "c": 3, "d": 3}
+    result = top_overlap({"latest_views": order}, views, views, 2)
+    assert result["true_top_k_with_ties"] == 4
+    assert result["random_expected_overlap"] == 1.0
+    assert result["methods"]["latest_views"] == {
+        "overlap": 1.0,
+        "frozen_overlap": 0.5,
+        "frozen_positions": 2,
+        "frozen_valid_labels": 1,
+        "frozen_defined_targets": 1,
+    }
+
+
+def test_benchmark_formal_threshold_counts_labels_and_pairs_utc_days():
+    inputs = examples(end=START + 21 * DAY)
+    for offset in (*range(7), 9, 10, 11, *range(14, 21)):
+        created = START + offset * DAY
+        count = 71 if offset in range(14, 18) else 72
+        for index in range(count):
+            cid = f"{offset}-{index:02d}"
+            inputs.candidates[cid, 60] = Candidate(
+                cid, "42", created, 60, "eligible", "1", (index, 100 - index, 0, 0)
+            )
+            inputs.outcomes[cid] = Outcome("valid", 100 - index, created + DAY)
+    frozen = freeze(inputs, "42", "observed-at-cutoff")
+    args = (inputs, frozen, "42", "observed-at-cutoff", 60, START + 9 * DAY, START + 14 * DAY)
+    report = cutoff_report(*args)
+    assert report["status"] == "EVALUATED"
+    assert report["valid_test_labels"] == 500
+    paired = report["metrics"]["test"]["views_24h"][50]["overlap"]["methods"]["observed_growth"]
+    assert paired["paired_ci95"][0] > 0
+    assert paired["beats_latest_views"] is True
+    assert report == cutoff_report(*args)
+
+    inputs.outcomes["20-00"] = Outcome("missing")
+    report = cutoff_report(*args)
+    assert report["status"] == "MECHANISM ONLY"
+    assert report["valid_test_labels"] == 499
+    paired = report["metrics"]["test"]["views_24h"][50]["overlap"]["methods"]["observed_growth"]
+    assert paired["beats_latest_views"] is None
 
 
 def test_chronological_evaluation_scores_cutoff_and_matched_pools():

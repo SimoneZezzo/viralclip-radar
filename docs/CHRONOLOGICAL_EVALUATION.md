@@ -90,12 +90,29 @@ No model is trained and no metric is computed for the audited one-day replay.
 
 ## Benchmark protocol v1
 
-**Status.** Approved by the owner on 2026-11-24. It governs the first
-benchmark and is not yet implemented: evaluator `2b.3` and
-`observed-at-cutoff-v1` still compute only the metrics above. Freeze it before
-any validation metric is read (validation days of November 28–29 mature on
-November 30 at 00:05 UTC). Any later change needs a new protocol version and
-a dated entry in the project history.
+**Status.** Approved and implemented offline on 2026-11-24. Use
+`--protocol benchmark-v1 --game-id CATEGORY_ID` with a 2a.3 export.
+The benchmark defaults to `observed-at-cutoff`. Select `--cohort primary`
+for the secondary analysis with verified legacy discovery evidence. The
+existing invocation without `--protocol` reproduces evaluator `2b.3`
+and `observed-at-cutoff-v1`. The protocol was frozen before validation
+metrics were read. Later changes require a new version and a dated entry
+in the project history.
+
+```powershell
+uv run --offline --no-sync viralclip evaluate data/datasets/gta-vi-replay --protocol benchmark-v1 --game-id 1867279146 --validation-start 2026-11-28T00:00:00Z --test-start 2026-12-02T00:00:00Z --output data/evaluations/gta-vi-mechanism
+```
+
+The report uses `MECHANISM ONLY` for scoring runs that meet the minimum
+2/2/2 floor but fall short of formal readiness. The recommendation CSV
+stores the first 50 rows per game/day/cutoff and method.
+`frozen_orders.json` stores SHA-256 digests of the full ordered clip ID
+arrays, encoded as compact UTF-8 JSON. Both are written before outcome
+artifacts are read. The manifest binds these files, the report and their
+inputs. For pools smaller than K, overlap uses the available labeled
+positions, or available frozen positions for sensitivity. The missing-label
+sensitivity preserves the original order. T2 coverage distinguishes a
+valid label from a defined growth target.
 
 **Question.** Among the clips the radar has discovered by the cutoff, which
 ranking puts on top the clips with the highest 24-hour views and the highest

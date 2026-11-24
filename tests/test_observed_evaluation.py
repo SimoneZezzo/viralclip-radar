@@ -23,21 +23,25 @@ MINUTE = timedelta(minutes=1)
 TICK = timedelta(microseconds=1)
 
 
-def make_export(root, name, *, top_label=100, outages=()):
+def make_export(
+    root, name, *, top_label=100, outages=(), game=GTA_VI_GAME_ID, primary=False, id_prefix=""
+):
     path = root / "data" / (name + ".sqlite3")
     path.parent.mkdir(exist_ok=True)
     labels = {}
     with closing(Database(path)) as db:
-        db.upsert_game(GTA_VI_GAME_ID, "Synthetic GTA VI", START)
+        db.upsert_game(game, "Synthetic game", START)
         for offset in (0, 1, 2, 4, 5, 8, 9):
             created = START + offset * DAY
+            records = []
             for index in range(1 if offset == 2 else 13):
-                cid = f"{offset}-{index:02d}"
+                cid = f"{id_prefix}{offset}-{index:02d}"
                 seen = created + (15 if index < 9 else (60, 36, 45, 60)[index - 9]) * MINUTE
                 if index == 12:
                     seen += TICK
                 views = 100 if index == 0 else 70 if index in (1, 2) else index
                 record = {"id": cid, "created_at": created, "view_count": views}
+                records.append(record)
                 if index == 11:
                     # A known identity without a stored early view measurement.
                     with db.transaction() as conn:
@@ -46,7 +50,7 @@ def make_export(root, name, *, top_label=100, outages=()):
                                VALUES(?,?,?,?,?)""",
                             (
                                 cid,
-                                GTA_VI_GAME_ID,
+                                game,
                                 to_utc_iso(created),
                                 to_utc_iso(seen),
                                 to_utc_iso(seen),
@@ -54,27 +58,33 @@ def make_export(root, name, *, top_label=100, outages=()):
                         )
                         Database._create_jobs(conn, cid, created, seen)
                 else:
-                    db.record_clip(record, GTA_VI_GAME_ID, seen, None)
+                    db.record_clip(record, game, seen, None)
                 if index == 7:
                     db.record_clip(
                         record | {"view_count": 9000},
-                        GTA_VI_GAME_ID,
+                        game,
                         created + 60 * MINUTE + TICK,
                         None,
                     )
                 labels[cid] = (created, top_label if (offset, index) == (8, 0) else 100 + index)
-        for cid, (created, label) in labels.items():
+            if primary:
+                end = created + DAY
+                run = db.create_run(game, created, end, end)
+                for record in records:
+                    db.record_clip(record, game, end, run)
+                db.finish_run(run, end, 1, len(records), len(records), 0)
+        # The optional label goes last so removing it preserves other snapshot IDs.
+        sorted_labels = sorted(labels.items(), key=lambda item: item[0] == f"{id_prefix}8-00")
+        for cid, (created, label) in sorted_labels:
             if label is not None:
                 job = db.connection.execute(
                     "SELECT job_id FROM jobs WHERE clip_id=? AND target_age_seconds=86400", (cid,)
                 ).fetchone()[0]
                 db.add_scheduled_snapshot(cid, created + DAY, label, 86400, [job])
         now = END + MATURITY
-        db.record_clip(
-            {"id": "stamp", "created_at": now, "view_count": 0}, GTA_VI_GAME_ID, now, None
-        )
+        db.record_clip({"id": "stamp", "created_at": now, "view_count": 0}, game, now, None)
     artifact = root / "data" / name
-    extract(path, Selection(START, END, (GTA_VI_GAME_ID,), outages=outages), artifact)
+    extract(path, Selection(START, END, (game,), outages=outages), artifact)
     return artifact
 
 
@@ -86,7 +96,7 @@ def workspace(tmp_path, monkeypatch):
     return tmp_path
 
 
-def cli(artifact, output, *extra, splits=True, additional=()):
+def cli(artifact, output, *extra, splits=True, additional=(), cohort="observed-at-cutoff"):
     arguments = [
         sys.executable,
         "-I",
@@ -97,7 +107,7 @@ def cli(artifact, output, *extra, splits=True, additional=()):
         str(artifact),
         *map(str, additional),
         "--cohort",
-        "observed-at-cutoff",
+        cohort,
         "--output",
         str(output),
         *extra,
@@ -107,6 +117,86 @@ def cli(artifact, output, *extra, splits=True, additional=()):
             ("--validation-start", to_utc_iso(VALIDATION), "--test-start", to_utc_iso(TEST))
         )
     return subprocess.run(arguments, capture_output=True, text=True, timeout=15, check=False)
+
+
+@pytest.mark.parametrize("cohort", ["observed-at-cutoff", "primary"])
+def test_benchmark_cli_freezes_both_cohorts_and_reports_sensitivity(workspace, cohort):
+    reports = []
+    frozen = []
+    for name, label in (("missing", None), ("present", 500)):
+        source = make_export(
+            workspace, name, top_label=label, game="42", primary=cohort == "primary"
+        )
+        output = workspace / "data" / f"benchmark-{name}"
+        result = cli(source, output, "--protocol", "benchmark-v1", "--game-id", "42", cohort=cohort)
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines()[0] == "MECHANISM ONLY"
+        reports.append(load_report(output))
+        manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+        orders = (output / "frozen_orders.json").read_bytes()
+        assert manifest["sha256"]["frozen_orders.json"] == sha256(orders).hexdigest()
+        frozen.append(((output / "recommendations.csv").read_bytes(), orders))
+    assert frozen[0] == frozen[1]
+    report = reports[0]
+    assert report["game_id"] == "42"
+    assert report["primary_endpoint"] is None
+    cutoff = report["by_cutoff_minutes"]["60"]
+    assert cutoff["rankable_days_by_split"] == {"train": 2, "validation": 2, "test": 2}
+    assert cutoff["valid_test_labels"] == 23
+    assert "embargo_at_split_boundary" in cutoff["days"][2]["exclusions"]
+    day = cutoff["days"][8]["metrics"]
+    total = day["views_24h"]["50"]
+    latest = total["methods"]["latest_views"]
+    assert total["effective_k"] == 11
+    assert total["ideal_overlap"] == total["random_expected_overlap"] == latest["overlap"] == 1
+    assert latest["frozen_overlap"] == pytest.approx(11 / 12)
+    assert latest["frozen_valid_labels"] == 11
+    assert day["post_cutoff_log_growth"]["50"]["target_count"] == 10
+    paired = cutoff["metrics"]["test"]["views_24h"]["50"]["overlap"]["methods"]["latest_views"]
+    assert paired["paired_ci95"] == [0, 0]
+    assert paired["beats_latest_views"] is None
+
+
+def test_benchmark_primary_cannot_borrow_label_from_unattested_export(workspace):
+    attested = make_export(workspace, "attested", top_label=None, game="42", primary=True)
+    diagnostic = make_export(workspace, "diagnostic", top_label=500, game="42", primary=True)
+    coverage_path = diagnostic / "coverage.json"
+    coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+    coverage["primary_discovery"]["policy"] = "legacy-search-day-v1"
+    coverage_path.write_text(json.dumps(coverage), encoding="utf-8")
+    manifest_path = diagnostic / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sha256"]["coverage.json"] = sha256(coverage_path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    output = workspace / "data" / "primary-report"
+    result = cli(
+        attested,
+        output,
+        "--protocol",
+        "benchmark-v1",
+        "--game-id",
+        "42",
+        additional=(diagnostic,),
+        cohort="primary",
+    )
+    assert result.returncode == 0, result.stderr
+    day = load_report(output)["by_cutoff_minutes"]["60"]["days"][8]
+    assert day["cohort_size"] == 12
+    assert day["valid_labels"] == 11
+
+
+def test_benchmark_selects_one_exact_game_from_multiple_exports(workspace):
+    source = make_export(workspace, "selected", game="42")
+    unrelated = make_export(workspace, "unrelated", game="43", id_prefix="other-")
+    output = workspace / "data" / "one-game"
+    result = cli(
+        source, output, "--protocol", "benchmark-v1", "--game-id", "42", additional=(unrelated,)
+    )
+    assert result.returncode == 0, result.stderr
+    report = load_report(output)
+    assert report["game_id"] == "42"
+    assert report["by_cutoff_minutes"]["60"]["valid_test_labels"] == 24
+    assert "other-" not in (output / "recommendations.csv").read_text(encoding="utf-8")
 
 
 def load_report(directory):

@@ -94,9 +94,9 @@ between agents. Open direction questions are argued by reviewer and reviewer in 
 TikTok, Shorts and Reels posts get the most views; Twitch ranking is the
 first signal and the candidate shortlist.
 
-1. Implement benchmark protocol v1, approved on November 24, in both
-   evaluators before November 28 (observed-at-cutoff population, 24h and
-   post-cutoff growth targets, top-K overlap, day bootstrap).
+1. Benchmark protocol v1 is implemented offline for both cohorts. The first
+   real 2/2/2 mechanism run awaits admissible cohorts; the formal 7/3/7
+   benchmark and model adoption remain separate gates.
    [Protocol v1](docs/CHRONOLOGICAL_EVALUATION.md#benchmark-protocol-v1)
 2. With authorization, run the read-only 48-hour journal check, then decide on
    the November 27 reboot rehearsal.

@@ -68,6 +68,7 @@ class Inputs:
     input_candidates: int
     input_outcomes: int
     primary_clips: set[str] = field(default_factory=set)
+    primary_candidates: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -212,7 +213,7 @@ def _primary_days(coverage: dict, window: SourceWindow) -> set[tuple[str, dateti
 
 
 def read_candidate_exports(
-    directories: list[Path], *, observed_game: str | None = None
+    directories: list[Path], *, observed_game: str | None = None, benchmark: bool = False
 ) -> tuple[Inputs, list[CandidateExport]]:
     inputs = Inputs({}, {}, {}, [], set(), [], 0, 0)
     exports = []
@@ -231,6 +232,8 @@ def read_candidate_exports(
             raise ValueError("Unsupported dataset manifest")
         if observed_game is not None and version != "2a.3":
             raise ValueError("Observed-at-cutoff evaluation requires export 2a.3")
+        if benchmark and version != "2a.3":
+            raise ValueError("Benchmark v1 requires export 2a.3")
         names = ["broadcasters.csv"] if version != "2a.1" else []
         names.extend(("candidates.csv", "coverage.json", "dataset.csv", "outcomes.csv"))
         hashes = {name: manifest["sha256"][name] for name in names}
@@ -253,7 +256,9 @@ def read_candidate_exports(
         )
         local: dict[tuple[str, int], Candidate] = {}
         for row in _csv(_verified_file(directory, "candidates.csv", hashes["candidates.csv"])):
-            candidate = _candidate(row, window, check_discovery=observed_game is not None)
+            candidate = _candidate(
+                row, window, check_discovery=observed_game is not None or benchmark
+            )
             key = (candidate.clip_id, candidate.cutoff)
             if key in local:
                 raise ValueError("Repeated clip and cutoff within one dataset")
@@ -267,7 +272,7 @@ def read_candidate_exports(
                 and (
                     previous != candidate
                     or (
-                        observed_game is not None
+                        (observed_game is not None or benchmark)
                         and previous.latest_age_seconds != candidate.latest_age_seconds
                     )
                 )
@@ -285,6 +290,14 @@ def read_candidate_exports(
         if len(local) != len(local_ids) * len(CUTOFFS):
             raise ValueError("Incomplete clip, cutoff or outcome keys")
         window = SourceWindow(window.start, window.end, window.watermark, games)
+        if benchmark:
+            coverage = json.loads(
+                _verified_file(directory, "coverage.json", hashes["coverage.json"])
+            )
+            primary_days = _primary_days(coverage, window)
+            inputs.primary_candidates.update(
+                row.clip_id for row in local.values() if (row.game_id, row.day) in primary_days
+            )
         exports.append(CandidateExport(directory, window, local_ids, hashes))
         inputs.input_candidates += len(local)
     return inputs, exports

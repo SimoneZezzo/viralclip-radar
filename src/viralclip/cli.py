@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+from viralclip.benchmark import VERSION as BENCHMARK_PROTOCOL
+from viralclip.benchmark import run_benchmark
 from viralclip.collector.service import Collector
 from viralclip.config import load_settings
 from viralclip.dataset import CUTOFFS, Selection, extract
@@ -59,11 +61,14 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     evaluation.add_argument(
         "--cohort",
         choices=("primary", OBSERVED_COHORT),
-        default="primary",
-        help="evaluation cohort (default: primary)",
+        help="evaluation cohort (default: primary, or observed-at-cutoff for benchmark-v1)",
     )
     evaluation.add_argument("--validation-start", help="validation start at UTC midnight")
     evaluation.add_argument("--test-start", help="test start at UTC midnight")
+    evaluation.add_argument(
+        "--protocol", choices=(BENCHMARK_PROTOCOL,), help="select the versioned benchmark"
+    )
+    evaluation.add_argument("--game-id", help="exact category ID for benchmark-v1")
     evaluation.add_argument("--k", type=int, default=10, help="maximum size of the top ranks")
     evaluation.add_argument(
         "--output", required=True, type=Path, help="new Git-ignored report directory"
@@ -91,17 +96,32 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "evaluate":
         try:
-            if args.cohort == OBSERVED_COHORT:
-                evaluate_cohort = run_observed_evaluation
-            else:
-                evaluate_cohort = run_evaluation
-            report = evaluate_cohort(  # Esegue la valutazione dei modelli di ranking cronologico usando i dataset forniti e genera un report.
-                args.datasets,
-                args.output,
-                parse_utc(args.validation_start) if args.validation_start is not None else None,
-                parse_utc(args.test_start) if args.test_start is not None else None,
-                args.k,
+            validation_start = (
+                parse_utc(args.validation_start) if args.validation_start is not None else None
             )
+            test_start = parse_utc(args.test_start) if args.test_start is not None else None
+            if args.protocol == BENCHMARK_PROTOCOL:
+                if not args.game_id:
+                    raise ValueError("Benchmark v1 requires --game-id")
+                if args.k != 10:
+                    raise ValueError("Benchmark v1 uses fixed K values of 10 and 50")
+                report = run_benchmark(
+                    args.datasets,
+                    args.output,
+                    validation_start,
+                    test_start,
+                    game_id=args.game_id,
+                    cohort=args.cohort or OBSERVED_COHORT,
+                )
+            else:
+                if args.game_id is not None:
+                    raise ValueError("--game-id requires --protocol benchmark-v1")
+                evaluate_cohort = (
+                    run_observed_evaluation if args.cohort == OBSERVED_COHORT else run_evaluation
+                )
+                report = evaluate_cohort(
+                    args.datasets, args.output, validation_start, test_start, args.k
+                )
         except (KeyError, TypeError, ValueError, OSError) as exc:
             print(f"Evaluation failed: {exc}", file=sys.stderr)
             return 1
