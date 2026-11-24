@@ -83,10 +83,31 @@ def test_exact_commit_is_independent_of_git_and_checkout_configuration(source_re
     assert outputs[0] == outputs[1]
 
 
+def test_packages_reliability_unit_templates(source_repo, tmp_path):
+    repo, _, packager = source_repo
+    units = {
+        "deploy/viralclip-reliability@.service": b"[Service]\nType=oneshot\n",
+        "deploy/viralclip-reliability@.timer": b"[Timer]\nOnCalendar=*:0/5\n",
+    }
+    for name, data in units.items():
+        (repo / name).write_bytes(data)
+    revision = commit(repo, *units)
+    output = tmp_path / "reliability.tar.gz"
+
+    _, inventory = packager.package_release(repo, revision, output)
+
+    assert inventory == sorted((*packager.REQUIRED, *units))
+    with tarfile.open(output) as archive:
+        for name, data in units.items():
+            assert archive.extractfile(name).read() == data
+
+
 @pytest.mark.parametrize(
     ("name", "data", "error"),
     [
         ("deploy/backup.env", b"SYNTHETIC_ONLY=1\n", "Unexpected release path"),
+        ("deploy/other@.service", b"[Service]\n", "Unexpected release path"),
+        ("deploy/viralclip-reliability@.timer", b"[Timer]\r\n", "must use LF"),
         ("deploy/extra.service", b"[Service]\r\n", "must use LF"),
         ("deploy/extra.timer", b"[Timer]", "must use LF"),
     ],
