@@ -135,16 +135,17 @@ La seconda coorte misura il caso d'uso del ranking dal vivo, che ordina solo ci�
 ## 7. Contratto del ranking dal vivo
 
 È la priorità di prodotto n. 1. Il registro è implementato nella demo offline
-con dati sintetici. La valutazione e il ranking su clip reali sono ancora
-da completare.
+con dati sintetici e, per i dati del collector, in `viralclip.predictions`
+(comandi `rank`, `link-outcomes` e `shortlist`), provato finora solo su
+fixture. Nessun ranking su clip reali è stato ancora registrato.
 
 | Passaggio | Stato |
 | --- | --- |
 | Discovery e osservazioni reali | Implementato. La copertura assoluta resta sconosciuta. |
 | Feature al cutoff | Implementate nel builder offline e riutilizzabili. Il calcolo per singola clip all'istante del cutoff è da progettare. |
-| Score immutabile | Implementato su fixture con metodo, versione dello score, istante della previsione, cutoff e provenienza delle feature. La baseline GTA V è registrata come `not_trained_yet`. |
+| Score immutabile | Implementato con metodo, versione dello score, istante della previsione, cutoff e provenienza delle feature. Senza modello validato ogni run usa `baseline:latest_views:v1` con `model_status=not_trained_yet`. |
 | Classifica di un pool comparabile | Disponibile nel replay privato e nella pagina della demo sintetica. |
-| Verifica a 24 ore | La raccolta dell'esito esiste. Il collegamento con la previsione registrata va aggiunto senza mai modificare la previsione. |
+| Verifica a 24 ore | `link-outcomes` collega l'esito in `prediction_outcomes`, una sola volta per previsione e senza modificarla. Rimanda gli esiti immaturi e quelli con job a 24 ore ancora pendente. |
 
 **Contratto del registro, approvato il 24 novembre 2026.** La demo salva la
 classifica sintetica in un SQLite separato. Ogni esecuzione del metodo è
@@ -162,6 +163,11 @@ pagina legge il registro in sola lettura. Il collegamento degli esiti a
 | `score`, `rank`, `pool_size` | Score relativo da 1 a 100, posizione e dimensione del pool (gioco × giorno UTC × cutoff) al momento del calcolo. |
 | `observation_ids` | Snapshot usati come feature, tutti con `observed_at` ≤ `prediction_at`. |
 | `source_watermark` | Ultima osservazione disponibile al calcolo. |
+
+Nel registro del collector il pool comprende solo le clip osservate entro il
+cutoff (`eligible` o `missing_observations`); le clip scoperte dopo il cutoff
+restano fuori. Il percorso del registro deve essere ignorato da Git, perché
+contiene derivati di dati reali.
 
 Regole: i record sono append-only come gli snapshot; un ricalcolo crea un nuovo record con un nuovo `scored_at`, mai una modifica. L'esito a 24 ore si collega dopo, in una tabella separata, con lo stesso legame job/snapshot dell'export 2a.3. La shortlist per i clipper è la vista dei primi K record per pool. Il registro vive in un database separato da quello del collector, così il collector resta l'unico writer del proprio database.
 

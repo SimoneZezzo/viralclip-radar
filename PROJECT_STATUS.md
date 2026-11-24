@@ -25,7 +25,7 @@ dated samples below is **UNKNOWN**.
 | 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Reboot rehearsal authorized for November 27 09:00 UTC. Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
 | 3. Machine learning | Pending validated baselines and enough mature labels. How much to invest is decided at the end of M2. |
-| 4. Portfolio demo | Synthetic page and prediction registry implemented locally. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
+| 4. Portfolio demo | Synthetic page and prediction registry implemented locally. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
 
 ## Open gates
 
@@ -115,6 +115,9 @@ first signal and the candidate shortlist.
    The local entry point is `viralclip demo`. The page distinguishes
    simulated model scores, baseline scores and missing scores. The UI is
    in English and shows a relative 1–100 score for each ranked clip.
+   The collector-backed registry records `latest_views` baseline runs as
+   `not_trained_yet` and links 24h outcomes without modifying predictions.
+   Its first use on a sealed private copy is a separate step.
    [Ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
 5. With approved access and a cleared clip, test real Twitch download and
    export with the editor's own reviewer and external editor accounts while the

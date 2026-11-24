@@ -192,7 +192,12 @@ def source_paths(*patterns: str) -> list[str]:
     paths = git(
         ROOT, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *patterns
     )
-    files = sorted({os.fsdecode(path) for path in paths.split(b"\0") if path})
+    # A tracked file deleted from the working tree, but not yet staged, has nothing to parse.
+    files = sorted(
+        path
+        for path in {os.fsdecode(path) for path in paths.split(b"\0") if path}
+        if (ROOT / path).is_symlink() or (ROOT / path).exists()
+    )
     for path in files:
         if (ROOT / path).is_symlink():
             raise ValueError(f"Syntax input is a symlink: {path}")

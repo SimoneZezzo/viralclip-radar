@@ -18,6 +18,7 @@ from viralclip.demo import run_demo
 from viralclip.evaluation import run_evaluation
 from viralclip.observed_evaluation import MODE as OBSERVED_COHORT
 from viralclip.observed_evaluation import run_observed_evaluation
+from viralclip.predictions import ignored_registry, link_outcomes, rank_pool, shortlist
 from viralclip.storage.database import Database, parse_utc, utc_now
 from viralclip.storage.health import LEVELS, read_health
 from viralclip.twitch.client import TwitchAPIError, TwitchClient
@@ -76,6 +77,21 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     evaluation.add_argument(
         "--output", required=True, type=Path, help="new Git-ignored report directory"
     )
+    rank = commands.add_parser("rank", help="record a baseline ranking for one pool at its cutoff")
+    rank.add_argument("--registry", required=True, type=Path, help="Git-ignored registry path")
+    rank.add_argument("--game-id", required=True, help="exact Twitch category ID")
+    rank.add_argument("--day", required=True, help="UTC creation day, YYYY-MM-DD")
+    rank.add_argument("--cutoff", required=True, type=int, choices=CUTOFFS, help="minutes")
+    rank.add_argument("--watermark", help="UTC source watermark; defaults to latest observation")
+    link = commands.add_parser("link-outcomes", help="attach settled 24h outcomes to predictions")
+    link.add_argument("--registry", required=True, type=Path, help="Git-ignored registry path")
+    link.add_argument("--watermark", help="UTC source watermark; defaults to latest observation")
+    top = commands.add_parser("shortlist", help="print the latest top-K ranking for one pool")
+    top.add_argument("--registry", required=True, type=Path, help="prediction registry path")
+    top.add_argument("--game-id", required=True, help="exact Twitch category ID")
+    top.add_argument("--day", required=True, help="UTC creation day, YYYY-MM-DD")
+    top.add_argument("--cutoff", required=True, type=int, choices=CUTOFFS, help="minutes")
+    top.add_argument("--k", type=int, default=10, help="number of ranks (default: 10)")
     return parser
 
 
@@ -141,6 +157,18 @@ def main(argv: list[str] | None = None) -> int:
             print(reason)
         return 0
 
+    if args.command == "shortlist":
+        try:
+            result = shortlist(args.registry, args.game_id, args.day, args.cutoff, args.k)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            print(f"Shortlist failed: {exc}", file=sys.stderr)
+            return 1
+        run = result["run"]
+        print(f"{run['run_id']} {run['score_version']} ({run['model_status']})")
+        for row in result["predictions"]:
+            print(f"{row['rank']:>3} {row['score']:>3} {row['clip_id']}")
+        return 0
+
     try:
         settings = load_settings()
     except ValueError as exc:
@@ -177,6 +205,31 @@ def main(argv: list[str] | None = None) -> int:
                 f"{cutoff}m: {counts['candidates']} candidates, "
                 f"{counts['eligible']} eligible, {counts['labeled']} labeled"
             )
+        return 0
+
+    if args.command in ("rank", "link-outcomes"):
+        try:
+            registry = ignored_registry(args.registry)
+            watermark = parse_utc(args.watermark) if args.watermark is not None else None
+            if args.command == "rank":
+                result = rank_pool(
+                    settings.db_path,
+                    registry,
+                    args.game_id,
+                    parse_utc(f"{args.day}T00:00:00Z"),
+                    args.cutoff,
+                    watermark=watermark,
+                )
+                print(
+                    f"{result['run_id']}: {result['scored']}/{result['pool_size']} scored "
+                    f"with {result['score_version']} ({result['model_status']})"
+                )
+            else:
+                result = link_outcomes(settings.db_path, registry, watermark=watermark)
+                print(f"Linked {result['linked']} outcomes: {result['by_status']}")
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            print(f"{args.command} failed: {exc}", file=sys.stderr)
+            return 1
         return 0
 
     database = Database(settings.db_path)

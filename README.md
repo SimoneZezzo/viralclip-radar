@@ -219,6 +219,18 @@ baselines from local dataset artifacts. See the
 [evaluation guide](docs/CHRONOLOGICAL_EVALUATION.md) for split maturity,
 matched cohorts, metrics and the insufficient-data behavior.
 
+## Live ranking registry
+
+`uv run viralclip rank` scores one game, UTC creation day and cutoff with the
+declared `latest_views` baseline and seals the run in a separate, append-only
+SQLite registry under a Git-ignored path. The run records
+`model_status=not_trained_yet` until a validated model exists. Only clips
+observed by their cutoff enter the pool, and only observations at or before
+the cutoff are used. `viralclip link-outcomes` later attaches settled 24-hour
+outcomes in their own table without changing any prediction, and
+`viralclip shortlist` prints the top K of the latest run for a pool. Both
+writing commands read the collector database read-only.
+
 ## Milestone and project progress
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the maintained milestone checklist,
