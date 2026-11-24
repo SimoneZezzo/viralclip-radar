@@ -25,7 +25,7 @@ dated samples below is **UNKNOWN**.
 | 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Reboot rehearsal authorized for November 27 09:00 UTC. Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
 | 3. Machine learning | Pending validated baselines and enough mature labels. How much to invest is decided at the end of M2. |
-| 4. Portfolio demo | Synthetic page and prediction registry implemented locally. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only; the demo now reads it over a labeled synthetic collector database. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
+| 4. Portfolio demo | Version 1 scope (November 24): clip selection only, with the Twitch link handed to an external editor the user picks and pays for. Synthetic page and prediction registry implemented locally; the page still shows the superseded simulated download and edit actions. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only; the demo now reads it over a labeled synthetic collector database. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
 
 ## Open gates
 
@@ -126,7 +126,14 @@ first signal and the candidate shortlist.
    `not_trained_yet` and links 24h outcomes without modifying predictions.
    Its first use on a sealed private copy is a separate step.
    [Ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
-5. With approved access and a cleared clip, test real Twitch download and
+5. Version 1: the owner tests a cleared clip's Twitch link in an external
+   editor (external editor on the owner's account) and publishes manually. The
+   integrated download and reviewer + external editor path is out of scope for now,
+   as are automated posting, multiple platforms and level C before a
+   validated Twitch result; the Discord bot is deferred and later steps are
+   evaluated after M2. A written authorization request to Twitch for
+   storage beyond 24 hours and training is to be drafted. Superseded text:
+   with approved access and a cleared clip, test real Twitch download and
    export with the editor's own reviewer and external editor accounts while the
    benchmark cohorts mature. Training and
    public scoring on historical Twitch data remain subject to terms
