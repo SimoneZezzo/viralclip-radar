@@ -9,7 +9,9 @@ from datetime import UTC, datetime
 import pytest
 
 from viralclip.cli import main
-from viralclip.synthetic import LABEL, dry_run, generate, views_at
+from viralclip.collector.service import GTA_VI_GAME_ID
+from viralclip.predictions import rank_pool
+from viralclip.synthetic import LABEL, _outcomes_before, dry_run, generate, views_at
 
 DAY = datetime(2026, 11, 24, tzinfo=UTC)
 
@@ -84,6 +86,26 @@ def test_dry_run_reports_insufficient_data_instead_of_crashing(workspace, capsys
     assert code == 0
     assert "Benchmark: INSUFFICIENT DATA" in output
     assert "Test top-50 overlap (views_24h, 60m): not scored" in output
+
+
+def test_mature_count_ignores_unranked_clips(tmp_path):
+    collector = tmp_path / "collector.sqlite3"
+    scored_at = generate(collector, [DAY], clips_per_day=12)
+    registry = tmp_path / "registry.sqlite3"
+    run = rank_pool(
+        collector,
+        registry,
+        GTA_VI_GAME_ID,
+        DAY,
+        60,
+        scored_at=scored_at,
+        scorer=lambda row: None,
+        score_version="test:no-score:v1",
+        model_status="simulated",
+    )
+    # Every clip is mature by now, but none is ranked, so none counts.
+    assert run["scored"] == 0
+    assert _outcomes_before(collector, registry, run["run_id"], scored_at) == 0
 
 
 def test_dry_run_requires_a_git_ignored_output(workspace):

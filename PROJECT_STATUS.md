@@ -25,7 +25,7 @@ dated samples below is **UNKNOWN**.
 | 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Reboot rehearsal authorized for November 27 09:00 UTC. Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
 | 3. Machine learning | Pending validated baselines and enough mature labels. How much to invest is decided at the end of M2. |
-| 4. Portfolio demo | Version 1 scope (November 24): clip selection only, with the Twitch link handed to an external editor the user picks and pays for. Synthetic page and prediction registry implemented locally; the clip card offers the clip link, Copy clip link, Open on Twitch and external editor links, with no media handling. The demo is a React + TypeScript app (Vite, Tailwind CSS, TanStack Query) served by FastAPI; strict verification adds ESLint, TypeScript, Vitest, the Vite build and Playwright checks. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only; the demo now reads it over a labeled synthetic collector database. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
+| 4. Portfolio demo | Version 1 scope (November 24): clip selection only, with the Twitch link handed to an external editor the user picks and pays for. Synthetic page and prediction registry implemented locally; the clip card offers the clip link, Copy clip link, Open on Twitch and external editor links, with no media handling. The demo is a React + TypeScript app (Vite, Tailwind CSS, TanStack Query) served by FastAPI; strict verification adds ESLint, TypeScript, Vitest, the Vite build and Playwright checks. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only; the demo now reads it over a labeled synthetic collector database. Real ranking data and the owner's trial (clip link in an external editor, manual publication) remain pending. |
 
 ## Open gates
 
@@ -137,12 +137,9 @@ first signal and the candidate shortlist.
    evaluated after M2. Until Twitch answers a written authorization request
    (sent by the owner to `legal@twitch.tv` on November 24; no reply yet), historical data, derivatives
    and models stay private and are never redistributed; without
-   authorization, collected data is to be deleted before a public deploy. Superseded text:
-   with approved access and a cleared clip, test real Twitch download and
-   export with the editor's own reviewer and external editor accounts while the
-   benchmark cohorts mature. Training and
-   public scoring on historical Twitch data remain subject to terms
-   verification. The owner runs the Shorts trial after delivery. Creator
+   authorization, collected data is to be deleted before a public deploy.
+   Training and public scoring on historical Twitch data remain subject to
+   terms verification. The owner runs the Shorts trial after delivery. Creator
    recruitment for training remains deferred until after the demo.
    [Operating plan](docs/ACTION_PLAN.md#5-piano-operativo) ·
    [reviewer–reviewer exchange](docs/DEMO_REVIEW.md)

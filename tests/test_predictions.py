@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from test_collector import NOW, clip
 
-from viralclip import cli
+from viralclip import cli, predictions
 from viralclip.collector.service import Collector
 from viralclip.predictions import (
     BASELINE_VERSION,
@@ -180,6 +180,31 @@ def test_outcomes_wait_for_failed_jobs_the_collector_will_retry(source, tmp_path
         source.finish_jobs([job], "failed", NOW + timedelta(seconds=86420), "HTTP 503")
     exhausted = link_outcomes(source.path, registry, linked_at=NOW + DAY_SPAN)
     assert exhausted == {"linked": 1, "by_status": {"deferred": 1, "missing": 1}}
+
+
+def test_outcomes_use_one_snapshot_when_a_retry_starts_during_linking(
+    source, tmp_path, monkeypatch
+):
+    registry = tmp_path / "predictions.sqlite3"
+    rank_pool(source.path, registry, "42", DAY_START, 60, scored_at=NOW + 2 * 60 * MINUTE)
+    (job,) = source.connection.execute(
+        "SELECT job_id FROM jobs WHERE clip_id = 'a' AND target_age_seconds = 86400"
+    ).fetchone()
+    for _ in range(2):
+        source.start_jobs([job])
+        source.finish_jobs([job], "failed", NOW + timedelta(seconds=86420), "HTTP 503")
+    seen(source, "late", timedelta(hours=24, minutes=10), 6000)
+    original = predictions.read_source
+
+    def read_then_retry(*args, **kwargs):
+        snapshot = original(*args, **kwargs)
+        # The collector starts the third attempt right after the linker's snapshot.
+        source.start_jobs([job])
+        return snapshot
+
+    monkeypatch.setattr(predictions, "read_source", read_then_retry)
+    result = link_outcomes(source.path, registry, linked_at=NOW + DAY_SPAN)
+    assert result == {"linked": 0, "by_status": {"deferred": 2}}
 
 
 def test_registry_cli_ranks_and_prints_the_shortlist(source, tmp_path, monkeypatch, capsys):

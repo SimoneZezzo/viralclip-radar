@@ -156,7 +156,7 @@ def read_source(path: Path, selection: Selection) -> Source:
             if clip.created + HORIZON + TOLERANCE <= watermark:
                 jobs[clip.clip_id] = db.execute(
                     """
-                    SELECT j.job_id, j.status, j.due_at, j.completed_at,
+                    SELECT j.job_id, j.status, j.due_at, j.completed_at, j.attempts,
                            s.snapshot_id, s.clip_id AS snapshot_clip_id, s.source,
                            s.observed_at, s.age_seconds, s.view_count, s.target_age_seconds
                     FROM jobs j LEFT JOIN clip_snapshots s USING (snapshot_id)

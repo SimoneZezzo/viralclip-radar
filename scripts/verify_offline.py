@@ -274,10 +274,22 @@ def web_ready() -> tuple[str, str] | None:
     return None
 
 
-def not_run(output: str) -> int:
-    """Count tests a Vitest or Playwright summary reports as skipped or todo."""
-    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
-    return sum(int(count) for count in re.findall(r"(\d+) (?:skipped|todo)\b", plain))
+def strip_ansi(output: str) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", output)
+
+
+def vitest_not_run(output: str) -> int:
+    """Skipped or todo tests from the Vitest `Tests` summary line only."""
+    line = re.search(r"^\s*Tests\s+(.+)$", strip_ansi(output), re.MULTILINE)
+    if not line:
+        return 0
+    return sum(int(count) for count in re.findall(r"(\d+) (?:skipped|todo)\b", line.group(1)))
+
+
+def playwright_not_run(output: str) -> int:
+    """Skipped tests from Playwright's final summary, a line such as `  2 skipped`."""
+    counts = re.findall(r"^\s*(\d+) skipped\s*$", strip_ansi(output), re.MULTILINE)
+    return int(counts[-1]) if counts else 0
 
 
 def web_check(env: dict[str, str]) -> tuple[str, str]:
@@ -295,10 +307,9 @@ def web_check(env: dict[str, str]) -> tuple[str, str]:
             return FAIL, f"{name}: exit {result.returncode}\n{details(result)}"
         if name == "Vitest":
             # Strict mode treats skipped tests as SKIP, as the pytest check does.
-            if skipped := not_run(result.stdout):
+            if skipped := vitest_not_run(result.stdout):
                 return SKIP, f"Vitest skipped or left {skipped} tests as todo"
-            plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
-            match = re.search(r"Tests\s+(\d+) passed", plain)
+            match = re.search(r"Tests\s+(\d+) passed", strip_ansi(result.stdout))
             tests = f", {match.group(1)} unit tests" if match else ""
     return PASS, f"ESLint, TypeScript, Vite build{tests}"
 
@@ -314,7 +325,7 @@ def web_e2e_check(env: dict[str, str]) -> tuple[str, str]:
         return SKIP, "Google Chrome unavailable for Playwright"
     if result.returncode:
         return FAIL, f"exit {result.returncode}\n{details(result)}"
-    if skipped := not_run(output):
+    if skipped := playwright_not_run(output):
         return SKIP, f"Playwright skipped {skipped} tests"
     match = re.search(r"(\d+) passed", output)
     return PASS, f"{match.group(1) if match else 'All'} Playwright tests against the built demo"

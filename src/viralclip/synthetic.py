@@ -188,7 +188,13 @@ def _test_overlap(report: dict) -> dict[str, float | None]:
 
 def _outcomes_before(collector: Path, registry: Path, run_id: str, scored_at: datetime) -> int:
     """Count ranked clips whose 24-hour job had already completed when the run was scored."""
-    clips = [row["clip_id"] for row in read_run(registry, run_id)["predictions"]]
+    clips = [
+        row["clip_id"]
+        for row in read_run(registry, run_id)["predictions"]
+        if row["rank"] is not None
+    ]
+    if not clips:
+        return 0
     uri = collector.resolve().as_uri() + "?mode=ro"
     with closing(sqlite3.connect(uri, uri=True)) as db:
         db.execute("PRAGMA query_only = ON")
