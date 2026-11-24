@@ -21,6 +21,7 @@ from viralclip.observed_evaluation import run_observed_evaluation
 from viralclip.predictions import ignored_registry, link_outcomes, rank_pool, shortlist
 from viralclip.storage.database import Database, parse_utc, utc_now
 from viralclip.storage.health import LEVELS, read_health
+from viralclip.synthetic import dry_run, summary_lines
 from viralclip.twitch.client import TwitchAPIError, TwitchClient
 from viralclip.twitch.telemetry import HttpEventLog
 
@@ -92,6 +93,14 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     top.add_argument("--day", required=True, help="UTC creation day, YYYY-MM-DD")
     top.add_argument("--cutoff", required=True, type=int, choices=CUTOFFS, help="minutes")
     top.add_argument("--k", type=int, default=10, help="number of ranks (default: 10)")
+    synthetic = commands.add_parser(
+        "synthetic-dry-run", help="run the offline pipeline end to end on synthetic data"
+    )
+    synthetic.add_argument(
+        "--output", required=True, type=Path, help="new Git-ignored output directory"
+    )
+    synthetic.add_argument("--clips-per-day", type=int, default=240, help="default: 240")
+    synthetic.add_argument("--seed", type=int, default=20261124, help="default: 20261124")
     return parser
 
 
@@ -155,6 +164,17 @@ def main(argv: list[str] | None = None) -> int:
         print(report["status"])
         for reason in report["reasons"]:
             print(reason)
+        return 0
+
+    if args.command == "synthetic-dry-run":
+        try:
+            if args.clips_per_day <= 0:
+                raise ValueError("--clips-per-day must be positive")
+            summary = dry_run(args.output, clips_per_day=args.clips_per_day, seed=args.seed)
+        except (KeyError, TypeError, ValueError, OSError, sqlite3.Error) as exc:
+            print(f"Synthetic dry run failed: {exc}", file=sys.stderr)
+            return 1
+        print("\n".join(summary_lines(summary)))
         return 0
 
     if args.command == "shortlist":

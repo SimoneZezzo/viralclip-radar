@@ -227,6 +227,16 @@ outcomes in their own table without changing any prediction, and
 `viralclip shortlist` prints the top K of the latest run for a pool. Both
 writing commands read the collector database read-only.
 
+## Synthetic dry run
+
+`uv run --offline --no-sync viralclip synthetic-dry-run --output data/dry-run`
+builds a collector database of `SYNTHETIC / NOT REAL TWITCH DATA` clips on the
+preliminary 2/2/2 calendar, then runs the point-in-time export, benchmark
+protocol v1, the live ranking registry at the 60-minute cutoff and 24-hour
+outcome linking. It writes `summary.json` in a new Git-ignored directory and
+needs no credentials or real data. The numbers describe the generator, not
+Twitch.
+
 ## Milestone and project progress
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the maintained milestone checklist,

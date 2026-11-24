@@ -125,6 +125,9 @@ first signal and the candidate shortlist.
    The collector-backed registry records `latest_views` baseline runs as
    `not_trained_yet` and links 24h outcomes without modifying predictions.
    Its first use on a sealed private copy is a separate step.
+   `viralclip synthetic-dry-run` runs export, benchmark v1, registry and
+   outcome linking end to end on synthetic data; it returned
+   `MECHANISM ONLY` on the 2/2/2 calendar as expected.
    [Ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
 5. Version 1: the owner tests a cleared clip's Twitch link in an external
    editor (external editor on the owner's account) and publishes manually. The
