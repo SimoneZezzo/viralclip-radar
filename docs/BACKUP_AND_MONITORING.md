@@ -208,7 +208,7 @@ For an actual recovery, stop and exclude the current production owner with
 explicit authorization, keep its data and WAL/SHM intact for diagnosis, and
 restore to a fresh path. Compare the backup watermark to the last known
 production observation and obtain an explicit loss decision if the backup
-is older. Follow the [single-writer installation and rollback procedure](OVHCLOUD_CUTOVER.md)
+is older. Follow the [single-writer cutover and rollback procedure](LINUX_DEPLOYMENT.md#production-cutover-only-after-separate-authorization)
 for verification and controlled startup. Keep divergent databases separate.
 Record any observation gap. Backup and monitoring timers can be removed or
 disabled independently of the collector.

@@ -59,6 +59,84 @@ Windows registration or SQLite access. The XML contains local paths and the
 account SID. Keep it local. It contains no password, Twitch credentials or
 environment contents.
 
+## Read-only checks and verified backup
+
+Run these from a second PowerShell terminal at the repository root while the
+existing collector keeps running. Process changes require explicit
+authorization.
+
+```powershell
+uv run --no-sync viralclip health
+$backup = 'data/backups/collector-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') +
+    '-' + [guid]::NewGuid().ToString('N').Substring(0,8) + '.sqlite3'
+git check-ignore --quiet -- $backup
+if ($LASTEXITCODE -ne 0) { throw 'Backup path must be ignored' }
+uv run --no-sync python -B -m viralclip.storage.backup $backup
+if ($LASTEXITCODE -ne 0) { throw 'Backup or restore verification failed' }
+```
+
+The backup opens the configured SQLite source read-only, uses the online
+backup API and refuses existing destinations. Its restore drill writes a
+separate temporary database under the destination directory and compares
+counts, job states, timestamps and relationships with the backup. Select
+another source with `--source PATH`. If `uv` cannot access its cache, use
+`.\.venv\Scripts\python.exe -B -m viralclip` or
+`.\.venv\Scripts\python.exe -B -m viralclip.storage.backup` instead.
+
+These helpers record collection progress and the collector process chain.
+Pass a UTC launch boundary to `Get-CollectorMarks` after a restart to measure
+the observation gap around it.
+
+```powershell
+function Get-CollectorMarks([string]$Boundary = 'none') {
+@'
+import sqlite3, sys
+from contextlib import closing
+from datetime import datetime
+from viralclip.config import load_settings
+
+uri = load_settings().db_path.resolve().as_uri() + "?mode=ro"
+with closing(sqlite3.connect(uri, uri=True, timeout=2)) as db:
+    db.execute("PRAGMA query_only = ON")
+    db.execute("BEGIN")
+    for label, sql in [
+        ("Latest successful discovery", "SELECT MAX(finished_at) FROM collection_runs "
+         "WHERE status='completed' AND potentially_truncated=0 AND error_summary IS NULL"),
+        ("Observations", "SELECT COUNT(*) FROM clip_snapshots"),
+        ("Latest observation", "SELECT MAX(observed_at) FROM clip_snapshots"),
+        ("Scheduled observations", "SELECT COUNT(*) FROM clip_snapshots WHERE source='scheduled'"),
+        ("Latest scheduled observation", "SELECT MAX(observed_at) FROM clip_snapshots "
+         "WHERE source='scheduled'"),
+    ]:
+        print(label, db.execute(sql).fetchone()[0])
+    if sys.argv[1] != "none":
+        before, after = db.execute(
+            "SELECT MAX(CASE WHEN observed_at < ? THEN observed_at END), "
+            "MIN(CASE WHEN observed_at >= ? THEN observed_at END) FROM clip_snapshots",
+            (sys.argv[1], sys.argv[1]),
+        ).fetchone()
+        print("Last observation before launch boundary", before)
+        print("First observation after launch boundary", after)
+        if before and after:
+            print("Observed measurement gap in seconds",
+                  (datetime.fromisoformat(after) - datetime.fromisoformat(before)).total_seconds())
+'@ | .\.venv\Scripts\python.exe -B - $Boundary
+}
+
+function Get-CollectorProcesses {
+    Get-CimInstance Win32_Process -Filter "Name='python.exe' OR Name='uv.exe' OR Name='viralclip.exe'" -ErrorAction Stop |
+        Where-Object { $_.CommandLine -match '(?i)viralclip.*\bcollect\b.*--loop' } |
+        Select-Object Name, ProcessId, ParentProcessId, CreationDate
+}
+
+Get-CollectorMarks
+Get-CollectorProcesses
+```
+
+If a backup fails, retry with a fresh ignored destination after checking free
+space, locks and access. If restore verification fails, keep the artifact for
+diagnosis and leave the live database in place.
+
 ## Proposed production activation checklist
 
 1. **Before approval**, choose a handoff window and confirm the unchanged
@@ -68,7 +146,7 @@ environment contents.
    Verify a recent online backup and restore drill, free space, current
    `HEALTHY` status and the original single process chain. Record the latest
    discovery, scheduled snapshot and overdue jobs using the
-   [rollout guide's read-only checks](HTTP_TELEMETRY_ROLLOUT.md).
+   [read-only checks](#read-only-checks-and-verified-backup).
 2. **After explicit approval**, open Task Scheduler and import
    `data/supervision/windows-task/collector.xml` as
    **ViralClip Radar Collector**. Confirm the task is **Disabled**, has the

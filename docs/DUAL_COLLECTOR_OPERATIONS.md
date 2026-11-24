@@ -35,7 +35,7 @@ for two passes or `1` if either check returned nonzero. The report prints each
 original exit code. Health code `1` is DEGRADED and the gate labels `2` or
 higher as FAILED. Stop the rollout if either check returns nonzero.
 
-Use the [full read-only audit procedure](PRODUCTION_HEALTH_AUDIT.md#run-the-pending-read-only-checks)
+Use the [phase 0 read-only inventory](MILESTONE_1_ROLLOUT.md#0-linux-vps--read-only-inventory-and-baseline)
 to verify independent service PIDs, game identity, live progress and backup
 evidence before any approved rollout.
 

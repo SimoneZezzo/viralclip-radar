@@ -149,10 +149,9 @@ Logs omit credentials, headers other than the two parsed numeric rate-limit
 fields, URLs, query parameters, request and response bodies, and exception text.
 The SQLite health command continues to report stored collector health independently.
 
-For a repeatable online backup, temporary restore drill and supervised
-activation checklist, see the [Windows rollout guide](docs/HTTP_TELEMETRY_ROLLOUT.md).
-For offline preparation of boot startup, crash recovery and operator controls,
-see the [Windows supervision runbook](docs/WINDOWS_SUPERVISION.md).
+For a repeatable online backup, temporary restore drill, boot startup, crash
+recovery and operator controls on Windows, see the
+[Windows supervision runbook](docs/WINDOWS_SUPERVISION.md).
 For staged Oracle ARM64 or generic x86-64 setup and the single-writer
 handoff, see the [Linux deployment runbook](docs/LINUX_DEPLOYMENT.md).
 For the active no-backup policy, collector health and disk monitoring, see the
@@ -204,13 +203,14 @@ saved session context, verification evidence, blockers and next steps.
 
 - [x] **Milestone 0 — Collector MVP:** CLI, Twitch OAuth/Helix client, SQLite
   migrations, discovery, persistent snapshot jobs, retry/rate-limit handling,
-  and mocked tests are implemented. The independent audit's 48-test suite and
-  Ruff checks pass; see [the audit report](docs/MILESTONE_0_AUDIT.md).
+  and mocked tests are implemented and passed an independent audit;
+  see [the acceptance evidence](docs/PROJECT_HISTORY.md#2026-11-18-final-milestone-0-acceptance-go).
 - [x] **Milestone 0 — Live acceptance:** passed, including the prospective
   post-restart cohort through 24 hours.
 - [ ] **Milestone 1 — 24/7 operations:** health, backup and restore, and live
-  telemetry verified. Windows and Linux supervision are prepared offline
-  and await controlled activation.
+  telemetry verified. GTA V and GTA VI run as separate systemd services on
+  a Linux VPS and start at boot. The 48-hour monitoring gate and a reboot
+  rehearsal remain open. Windows supervision is prepared offline.
 - [ ] **Milestone 2 — Features and baselines:** point-in-time builder and
   chronological evaluation harness verified. More mature days are needed
   for real out-of-time scores.
