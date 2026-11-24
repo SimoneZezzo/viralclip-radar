@@ -196,8 +196,10 @@ restart, multiple overdue targets may share one current snapshot, linked through
 `jobs.snapshot_id`; that observation is not an on-time historical measurement.
 Failed jobs retry after at least 30 seconds, up to three job attempts (each HTTP
 request also has bounded retries). Exhausted jobs remain failed for inspection.
-Discovery uses at most 20 logical page requests per category cycle, splitting
-windows near 900 results. Incomplete windows are marked partial and do not advance
+GTA V legacy discovery uses at most 20 logical page requests per cycle, splitting
+windows near 900 results. GTA VI uses fixed structural lanes instead: 10 recent
+pages, 7 overlap pages plus up to 3 time-bounded extra pages
+(`VIRALCLIP_GTA_VI_OVERLAP_PAGES`, 8 in production) and 3 history or retry pages. Incomplete windows are marked partial and do not advance
 the category checkpoint. Severe saturation can prevent catch-up; inspect coverage
 before using these observations for research.
 

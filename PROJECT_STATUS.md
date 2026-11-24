@@ -22,9 +22,9 @@ dated samples below is **UNKNOWN**.
 | Milestone | Status and remaining gate |
 | --- | --- |
 | 0. Collector MVP | **GO**, 2026-11-18. |
-| 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
+| 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Reboot rehearsal authorized for November 27 09:00 UTC. Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
-| 3. Machine learning | Pending validated baselines and enough mature labels. |
+| 3. Machine learning | Pending validated baselines and enough mature labels. How much to invest is decided at the end of M2. |
 | 4. Portfolio demo | Synthetic page and prediction registry implemented locally. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
 
 ## Open gates
@@ -32,8 +32,9 @@ dated samples below is **UNKNOWN**.
 **M1 closeout PENDING.** The paired 48-hour journal check passed on
 November 24: 577 monitor samples per collector, no gap over six minutes and
 no unexplained service events. The candidate reboot window is November 27 at
-09:00 UTC, chosen to protect the November 24–25 cohorts. It requires a fresh
-preflight and separate reboot authorization.
+09:00 UTC, chosen to protect the November 24–25 cohorts. The owner authorized
+the rehearsal on November 24; it still requires a fresh preflight, the
+runbook steps and console recovery access.
 [Journal check](docs/PROJECT_HISTORY.md#2026-11-24-m1-48-hour-journal-check-passed) ·
 [Closeout sequence](docs/PROJECT_HISTORY.md#2026-11-24-m1-gate-and-m2-calendar-preparation) ·
 [M1 closure gate](docs/M1_RELIABILITY_HARDENING.md#proposed-m1-closure-gate)
@@ -105,8 +106,9 @@ first signal and the candidate shortlist.
    real 2/2/2 mechanism run awaits admissible cohorts; the formal 7/3/7
    benchmark and model adoption remain separate gates.
    [Protocol v1](docs/CHRONOLOGICAL_EVALUATION.md#benchmark-protocol-v1)
-2. The 48-hour journal check passed. Decide on the November 27 09:00 UTC
-   reboot rehearsal; it needs a fresh preflight and separate authorization.
+2. Run the authorized November 27 09:00 UTC reboot rehearsal after a fresh
+   preflight, following the
+   [reboot procedure](docs/M1_RELIABILITY_HARDENING.md#collector-correction-reboot-and-rollback).
 3. Audit each new UTC day with `--readiness`, record outages in UTC and keep
    the split boundaries predeclared before reading scores.
 4. The offline ranking register and fixture-based editor page are implemented.
@@ -130,7 +132,9 @@ November 24 using the existing a subscription login and network access.
 See the [review workflow](docs/REVIEW_INTEGRATION.md)
 for the current sharing scope and synthetic acceptance probe.
 
-Development continues on local `main`. The private GitHub repository was
+Development continues on local `main`; the
+`docs/benchmark-protocol-and-plan` branch was fast-forwarded into it on
+November 24. The private GitHub repository was
 deleted on November 24 after the initial import passed CI on Windows and
 Ubuntu; future publication will use a reviewed release copy.
 [Import evidence](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-and-verification)
