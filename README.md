@@ -255,9 +255,9 @@ Twitch.
 The code is released under the [MIT License](LICENSE). The license covers this
 repository's code only. Collected Twitch data, derived datasets and models stay
 private under the Twitch terms and are not part of the repository. Third-party
-dependencies and the bundled agent skills keep their own licenses. Confirm the
-provenance of `web/public/gameplay.jpg` before any public release, or replace
-it with original artwork.
+dependencies and the bundled agent skills keep their own licenses. The demo
+artwork `web/public/gameplay.jpg` is an generated image that reviewer created
+for this project; it shows no real game footage.
 
 ## Milestone and project progress
 
