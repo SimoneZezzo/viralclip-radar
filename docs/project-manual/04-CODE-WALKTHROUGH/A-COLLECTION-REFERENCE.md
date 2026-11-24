@@ -30,27 +30,27 @@ Import dichiarati. `import argparse`, `import sqlite3`, `import sys`, `import ti
 
 `_parser() -> argparse.ArgumentParser`
 
-[`Sorgente`](../../../src/viralclip/cli.py#L19) (righe 19–55).
+[`Sorgente`](../../../src/viralclip/cli.py#L24) (righe 24–63).
 
 Chiamate nel corpo. `argparse.ArgumentParser`, `parser.add_argument`, `parser.add_subparsers`, `commands.add_parser`, `collect.add_argument`, `collect.add_mutually_exclusive_group`, `mode.add_argument`, `dataset.add_argument`, `evaluation.add_argument`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79).
 
 ### _print_status
 
 `_print_status(database: Database) -> None`
 
-[`Sorgente`](../../../src/viralclip/cli.py#L58) (righe 58–67).
+[`Sorgente`](../../../src/viralclip/cli.py#L66) (righe 66–75).
 
 Chiamate nel corpo. `database.status`, `utc_now`, `status['jobs'].get`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79).
 
 ### main
 
 `main(argv: list[str] | None=None) -> int`
 
-[`Sorgente`](../../../src/viralclip/cli.py#L70) (righe 70–187).
+[`Sorgente`](../../../src/viralclip/cli.py#L79) (righe 79–204).
 
 Chiamate nel corpo. `_parser().parse_args`, `_parser`, `run_evaluation`, `parse_utc`, `load_settings`, `settings.__class__`, `settings.db_path.__class__(args.db).expanduser`, `settings.db_path.__class__`, `read_health`, `'\n'.join`, `Selection`, `extract`, `Database`, `_print_status`, `HttpEventLog`, `TwitchClient`, `Collector`, `collector.collect_cycle`, `time.monotonic`, `collector.collect_due_snapshots`, `database.record_error`, `utc_now`, `time.sleep`, `min`, `twitch.close`, `http_log.close`, `isinstance`, `database.close`.
 
@@ -144,7 +144,7 @@ Test che richiamano il simbolo. [`test_malformed_refresh_is_failed_not_unavailab
 
 Chiamate nel corpo. `self.database.due_jobs`, `self.clock`, `grouped.setdefault`, `range`, `self.database.start_jobs`, `self.twitch.get_clips`, `self.twitch.parse_data`, `any`, `isinstance`, `item.get`, `TwitchAPIError`, `self.database.finish_jobs`, `results.get`, `self._parse_clip`, `self.database.add_scheduled_snapshot`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70), [`Collector._discover_window`](../../../src/viralclip/collector/service.py#L64), [`Collector.collect_cycle`](../../../src/viralclip/collector/service.py#L209).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79), [`Collector._discover_window`](../../../src/viralclip/collector/service.py#L64), [`Collector.collect_cycle`](../../../src/viralclip/collector/service.py#L209).
 
 Test che richiamano il simbolo. [`test_malformed_refresh_is_failed_not_unavailable`](../../../tests/test_audit.py#L71), [`test_full_http_flow_restart_and_delayed_snapshot`](../../../tests/test_audit.py#L100), [`test_failed_jobs_have_delay_and_bounded_attempts`](../../../tests/test_audit.py#L238), [`test_due_snapshot_batches_under_one_hundred_and_handles_unordered_results`](../../../tests/test_collector.py#L164), [`test_unavailable_clip_is_not_recorded_as_zero`](../../../tests/test_collector.py#L300).
 
@@ -156,7 +156,7 @@ Test che richiamano il simbolo. [`test_malformed_refresh_is_failed_not_unavailab
 
 Chiamate nel corpo. `self.collect_due_snapshots`, `self.discover`, `self.resolve_game`, `self.database.record_error`, `self.clock`, `self.database.connection.execute('SELECT 1 FROM games WHERE game_id = ?', (game_id,)).fetchone`, `self.database.connection.execute`, `self.database.upsert_game`, `TwitchAPIError`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79).
 
 Test che richiamano il simbolo. [`test_full_http_flow_restart_and_delayed_snapshot`](../../../tests/test_audit.py#L100), [`test_bad_category_does_not_starve_other_categories`](../../../tests/test_audit.py#L329).
 
@@ -206,7 +206,7 @@ Chiamanti per nome. [`load_settings`](../../../src/viralclip/config.py#L43).
 
 Chiamate nel corpo. `load_dotenv`, `Settings`, `os.getenv`, `Path(os.getenv('VIRALCLIP_DB_PATH', 'data/viralclip.sqlite3')).expanduser`, `Path`, `_positive_int`, `_csv_values`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70), [`preflight`](../../../src/viralclip/deployment.py#L33), [`_preflight`](../../../src/viralclip/gta_vi.py#L45), [`main`](../../../src/viralclip/gta_vi.py#L90), [`main`](../../../src/viralclip/storage/backup.py#L125), [`preflight`](../../../src/viralclip/windows_supervision.py#L92).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79), [`preflight`](../../../src/viralclip/deployment.py#L33), [`_preflight`](../../../src/viralclip/gta_vi.py#L45), [`main`](../../../src/viralclip/gta_vi.py#L90), [`main`](../../../src/viralclip/storage/backup.py#L125), [`preflight`](../../../src/viralclip/windows_supervision.py#L92).
 
 Test che richiamano il simbolo. [`test_credentials_loaded_from_environment`](../../../tests/test_collector.py#L68).
 

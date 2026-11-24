@@ -130,7 +130,7 @@ Chiamanti per nome. [`extract`](../../../src/viralclip/dataset.py#L361), [`run_e
 
 Chiamate nel corpo. `ignored_output`, `read_source`, `candidate`, `outcome`, `source.jobs.get`, `outcomes[r['clip_id']].items`, `Counter`, `outcomes.values`, `_outage_coverage`, `_coverage`, `to_utc_iso`, `output.mkdir`, `_csv`, `sha256(f'viralclip:broadcaster:{c.broadcaster_id}'.encode()).hexdigest`, `sha256`, `f'viralclip:broadcaster:{c.broadcaster_id}'.encode`, `write_json`, `sha256((output / name).read_bytes()).hexdigest`, `(output / name).read_bytes`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79).
 
 ## src/viralclip/evaluation.py
 
@@ -308,4 +308,4 @@ Test che richiamano il simbolo. [`test_chronological_evaluation_scores_cutoff_an
 
 Chiamate nel corpo. `ignored_output`, `read_inputs`, `evaluate`, `to_utc_iso`, `MATURITY.total_seconds`, `zip`, `period['by_cutoff_minutes'].items`, `{'overall': report['overall'], **report['periods']}.items`, `output.mkdir`, `write_json`, `sha256((output / 'evaluation.json').read_bytes()).hexdigest`, `sha256`, `(output / 'evaluation.json').read_bytes`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79).

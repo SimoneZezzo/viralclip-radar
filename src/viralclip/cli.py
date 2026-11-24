@@ -1,3 +1,6 @@
+# Questo è il punto d'ingresso da terminale. La CLI (interfaccia a riga di comando) legge parole
+# come `collect --once`, sceglie l'operazione e stampa il risultato.
+
 from __future__ import annotations
 
 import argparse
@@ -18,7 +21,10 @@ from viralclip.twitch.client import TwitchAPIError, TwitchClient
 from viralclip.twitch.telemetry import HttpEventLog
 
 
-def _parser() -> argparse.ArgumentParser:
+# Qui prepariamo le regole con cui argparse leggerà il comando.
+# I comandi sono: `init-db`, `collect`, `status`, `health`, `dataset` e `evaluate`. Le opzioni iniziano con due trattini.
+def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for the viralclip CLI
+    # Il parser è l'oggetto che controlla il comando inserito.
     parser = argparse.ArgumentParser(prog="viralclip")
     parser.add_argument("--db", help="SQLite database path (overrides VIRALCLIP_DB_PATH)")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -31,6 +37,7 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--loop", action="store_true", help="collect continuously until interrupted")
     commands.add_parser("status", help="show local collection status (no credentials required)")
     commands.add_parser("health", help="inspect collector health using read-only SQLite access")
+    # L'estrazione sceglie le clip create dall'inizio incluso alla fine esclusa, in UTC.
     dataset = commands.add_parser("dataset", help="extract point-in-time features and 24h labels")
     dataset.add_argument("--start", required=True, help="inclusive UTC clip creation timestamp")
     dataset.add_argument("--end", required=True, help="exclusive UTC clip creation timestamp")
@@ -46,6 +53,7 @@ def _parser() -> argparse.ArgumentParser:
     dataset.add_argument(
         "--output", required=True, type=Path, help="new Git-ignored output directory"
     )
+    # Definisce il comando per valutare le prestazioni dei modelli di ranking cronologico. Richiede i percorsi dei dataset e un percorso di output per il report.
     evaluation = commands.add_parser("evaluate", help="evaluate chronological ranking baselines")
     evaluation.add_argument("datasets", nargs="+", type=Path, help="dataset artifact directories")
     evaluation.add_argument(
@@ -75,15 +83,19 @@ def _print_status(database: Database) -> None:
     print(f"Last error: {status['last_error'] or 'none'}")
 
 
+# La funzione principale legge le parole del comando, esegue l'operazione e restituisce un numero intero come codice di uscita.
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    args = _parser().parse_args(
+        argv
+    )  # Legge le parole del comando e le converte in un oggetto con attributi.
+
     if args.command == "evaluate":
         try:
             if args.cohort == OBSERVED_COHORT:
                 evaluate_cohort = run_observed_evaluation
             else:
                 evaluate_cohort = run_evaluation
-            report = evaluate_cohort(
+            report = evaluate_cohort(  # Esegue la valutazione dei modelli di ranking cronologico usando i dataset forniti e genera un report.
                 args.datasets,
                 args.output,
                 parse_utc(args.validation_start) if args.validation_start is not None else None,
@@ -97,20 +109,24 @@ def main(argv: list[str] | None = None) -> int:
         for reason in report["reasons"]:
             print(reason)
         return 0
+
     try:
         settings = load_settings()
     except ValueError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         return 2
+
     if args.db:
         settings = settings.__class__(
             **{**settings.__dict__, "db_path": settings.db_path.__class__(args.db).expanduser()}
         )
+
     if args.command == "health":
         severity, lines = read_health(settings.db_path, settings.discovery_interval_seconds)
         print(f"Collector health: {LEVELS[severity]}")
         print("\n".join(lines))
         return severity
+
     if args.command == "dataset":
         try:
             selection = Selection(
@@ -131,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"{counts['eligible']} eligible, {counts['labeled']} labeled"
             )
         return 0
+
     database = Database(settings.db_path)
     try:
         if args.command == "init-db":
@@ -146,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+
         games = tuple(args.game) if args.game else settings.games
         game_ids = tuple(args.game_id) if args.game_id else settings.game_ids
         if not games and not game_ids:
@@ -157,9 +175,11 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         http_log = HttpEventLog(settings.db_path, settings.http_log_directory)
+
         twitch = TwitchClient(
             settings.client_id or "", settings.client_secret or "", events=http_log
         )
+
         try:
             collector = Collector(
                 database,
@@ -172,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
                 collector.collect_cycle(games, game_ids)
                 print("Collection cycle completed.")
                 return 0
+
             print("Continuous collection started. Press Ctrl+C to stop.")
             next_discovery = 0.0
             while True:

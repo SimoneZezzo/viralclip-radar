@@ -27,7 +27,7 @@ La forma di `data` deve essere lista di oggetti, `pagination` oggetto e `cursor`
 
 ## 9. Come viene scoperta una clip
 
-Il loop misura la cadenza con `time.monotonic`, un contatore che avanza col trascorrere del tempo. Il primo ciclo parte subito. La cadenza configurata è di 300 secondi per default. Tra i cicli esegue solo snapshot e poi dorme `min(5, intervallo)` secondi. La scadenza è programmata all'inizio del ciclo. Un ciclo lungo può quindi far cominciare il successivo più tardi del previsto. [Loop CLI](../../src/viralclip/cli.py#L150)
+Il loop misura la cadenza con `time.monotonic`, un contatore che avanza col trascorrere del tempo. Il primo ciclo parte subito. La cadenza configurata è di 300 secondi per default. Tra i cicli esegue solo snapshot e poi dorme `min(5, intervallo)` secondi. La scadenza è programmata all'inizio del ciclo. Un ciclo lungo può quindi far cominciare il successivo più tardi del previsto. [Loop CLI](../../src/viralclip/cli.py#L176)
 
 1. Per un nome, `resolve_game` cerca un record con nome equivalente in SQLite, valido fino a 30 giorni. Un miss invoca la ricerca esatta. Un ID esplicito viene registrato come nome provvisorio se è nuovo, senza ricerca. Ogni errore Twitch di categoria viene registrato e il ciclo cerca anche le altre categorie. A fine ciclo l'errore può essere ripropagato.
 2. `_whole_minute_window` produce `end` troncando l'ora UTC al minuto e `start = min(end - lookback, checkpoint - 5m)` se esiste il checkpoint. Esempio: ore 14:39:24, lookback 30, checkpoint 13:59 → end 14:39, start 13:54. Senza checkpoint usa 14:09. Prima del primo run salva un valore bootstrap `start+5m` affinché un errore iniziale conservi lo stesso margine al tentativo seguente.

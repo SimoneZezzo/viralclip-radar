@@ -96,7 +96,7 @@ Costanti. `TARGET_AGES_SECONDS`, `MIGRATIONS`.
 
 Chiamate nel corpo. `datetime.now`.
 
-Chiamanti per nome. [`_print_status`](../../../src/viralclip/cli.py#L58), [`main`](../../../src/viralclip/cli.py#L70), [`Database.migrate`](../../../src/viralclip/storage/database.py#L181), [`read_health`](../../../src/viralclip/storage/health.py#L209).
+Chiamanti per nome. [`_print_status`](../../../src/viralclip/cli.py#L66), [`main`](../../../src/viralclip/cli.py#L79), [`Database.migrate`](../../../src/viralclip/storage/database.py#L181), [`read_health`](../../../src/viralclip/storage/health.py#L209).
 
 ### to_utc_iso
 
@@ -118,7 +118,7 @@ Test che richiamano il simbolo. [`test_page_survives_later_failure_and_checkpoin
 
 Chiamate nel corpo. `datetime.fromisoformat`, `parsed.utcoffset`, `ValueError`, `parsed.astimezone`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70), [`read_source`](../../../src/viralclip/dataset.py#L96), [`outcome`](../../../src/viralclip/dataset.py#L228), [`_candidate`](../../../src/viralclip/evaluation.py#L74), [`_outcome`](../../../src/viralclip/evaluation.py#L116), [`read_inputs`](../../../src/viralclip/evaluation.py#L148), [`_http_rates`](../../../src/viralclip/operations.py#L89), [`monitor`](../../../src/viralclip/operations.py#L295), [`Database.cached_game`](../../../src/viralclip/storage/database.py#L217), [`Database.add_scheduled_snapshot`](../../../src/viralclip/storage/database.py#L420), [`_age`](../../../src/viralclip/storage/health.py#L21), [`_observations`](../../../src/viralclip/storage/health.py#L139), [`read_health`](../../../src/viralclip/storage/health.py#L209).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79), [`read_source`](../../../src/viralclip/dataset.py#L96), [`outcome`](../../../src/viralclip/dataset.py#L228), [`_candidate`](../../../src/viralclip/evaluation.py#L74), [`_outcome`](../../../src/viralclip/evaluation.py#L116), [`read_inputs`](../../../src/viralclip/evaluation.py#L148), [`_http_rates`](../../../src/viralclip/operations.py#L89), [`monitor`](../../../src/viralclip/operations.py#L295), [`Database.cached_game`](../../../src/viralclip/storage/database.py#L217), [`Database.add_scheduled_snapshot`](../../../src/viralclip/storage/database.py#L420), [`_age`](../../../src/viralclip/storage/health.py#L21), [`_observations`](../../../src/viralclip/storage/health.py#L139), [`read_health`](../../../src/viralclip/storage/health.py#L209).
 
 ### Classe Database
 
@@ -258,7 +258,7 @@ Test che richiamano il simbolo. [`test_discovery_uses_persisted_watermark_after_
 
 Chiamate nel corpo. `self.transaction`, `conn.execute`, `to_utc_iso`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70), [`Collector.collect_cycle`](../../../src/viralclip/collector/service.py#L209).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79), [`Collector.collect_cycle`](../../../src/viralclip/collector/service.py#L209).
 
 Test che richiamano il simbolo. [`test_recent_errors_are_reported_without_stored_message`](../../../tests/test_health.py#L110).
 
@@ -330,7 +330,7 @@ Test che richiamano il simbolo. [`test_synthetic_transfer_preserves_links_pendin
 
 Chiamate nel corpo. `self.connection.execute("\n            SELECT finished_at FROM collection_runs\n            WHERE status = 'completed' AND error_summary IS NULL AND potentially_truncated = 0\n            ORDER BY finished_at DESC LIMIT 1\n            ").fetchone`, `self.connection.execute`, `self.connection.execute('\n            SELECT message FROM (\n                SELECT error_summary AS message, COALESCE(finished_at, started_at) AS occurred_at\n                FROM collection_runs WHERE error_summary IS NOT NULL\n                UNION ALL\n                SELECT last_error, COALESCE(completed_at, due_at)\n                FROM jobs WHERE last_error IS NOT NULL\n                UNION ALL\n                SELECT message, occurred_at FROM operational_errors\n            )\n            ORDER BY occurred_at DESC LIMIT 1\n            ').fetchone`, `self.connection.execute("\n            SELECT COUNT(*) FROM jobs\n            WHERE status IN ('pending', 'failed') AND due_at <= ? AND attempts < 3\n            ", (to_utc_iso(now),)).fetchone`, `to_utc_iso`, `table_count`.
 
-Chiamanti per nome. [`_print_status`](../../../src/viralclip/cli.py#L58).
+Chiamanti per nome. [`_print_status`](../../../src/viralclip/cli.py#L66).
 
 Test che richiamano il simbolo. [`test_page_survives_later_failure_and_checkpoint_does_not_advance`](../../../tests/test_audit.py#L32), [`test_malformed_refresh_is_failed_not_unavailable`](../../../tests/test_audit.py#L71), [`test_snapshot_and_completion_roll_back_together`](../../../tests/test_audit.py#L82), [`test_full_http_flow_restart_and_delayed_snapshot`](../../../tests/test_audit.py#L100), [`test_second_collector_rejected_but_status_available`](../../../tests/test_audit.py#L143), [`test_impossible_age_rejected_without_any_rows`](../../../tests/test_audit.py#L363), [`test_status_is_local_and_timestamps_require_timezone`](../../../tests/test_collector.py#L388).
 
@@ -400,4 +400,4 @@ Chiamanti per nome. [`read_health`](../../../src/viralclip/storage/health.py#L20
 
 Chiamate nel corpo. `path.resolve().as_uri`, `path.resolve`, `sqlite3.connect`, `closing`, `db.execute`, `db.execute('SELECT (SELECT COUNT(*) FROM clips), (SELECT COUNT(*) FROM clip_snapshots)').fetchone`, `utc_now`, `to_utc_iso`, `_discovery`, `_jobs`, `_observations`, `db.execute('SELECT COUNT(*) FROM operational_errors WHERE occurred_at >= ?', (since,)).fetchone`, `parse_utc`, `max`, `lines.extend`.
 
-Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L70), [`monitor`](../../../src/viralclip/operations.py#L295).
+Chiamanti per nome. [`main`](../../../src/viralclip/cli.py#L79), [`monitor`](../../../src/viralclip/operations.py#L295).
