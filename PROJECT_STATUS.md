@@ -132,7 +132,7 @@ first signal and the candidate shortlist.
    as are automated posting, multiple platforms and level C before a
    validated Twitch result; the Discord bot is deferred and later steps are
    evaluated after M2. Until Twitch answers a written authorization request
-   (drafted November 24, sent by the owner), historical data, derivatives
+   (sent by the owner to `legal@twitch.tv` on November 24; no reply yet), historical data, derivatives
    and models stay private and are never redistributed; without
    authorization, collected data is to be deleted before a public deploy. Superseded text:
    with approved access and a cleared clip, test real Twitch download and
