@@ -22,18 +22,19 @@ dated samples below is **UNKNOWN**.
 | Milestone | Status and remaining gate |
 | --- | --- |
 | 0. Collector MVP | **GO**, 2026-11-18. |
-| 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Open: paired 48-hour journal check, reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
+| 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
 | 3. Machine learning | Pending validated baselines and enough mature labels. |
 | 4. Portfolio demo | Synthetic page and prediction registry implemented locally. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
 
 ## Open gates
 
-**M1 closeout PENDING.** The paired 48-hour journal check has been ready since
-November 24 at 15:25:11 UTC (16:25:11 in Italy) and needs an authorized
-read-only SSH session. The candidate reboot window is November 27 at
-09:00 UTC, chosen to protect the November 24–25 cohorts. It requires the
-journal result, a fresh preflight and separate reboot authorization.
+**M1 closeout PENDING.** The paired 48-hour journal check passed on
+November 24: 577 monitor samples per collector, no gap over six minutes and
+no unexplained service events. The candidate reboot window is November 27 at
+09:00 UTC, chosen to protect the November 24–25 cohorts. It requires a fresh
+preflight and separate reboot authorization.
+[Journal check](docs/PROJECT_HISTORY.md#2026-11-24-m1-48-hour-journal-check-passed) ·
 [Closeout sequence](docs/PROJECT_HISTORY.md#2026-11-24-m1-gate-and-m2-calendar-preparation) ·
 [M1 closure gate](docs/M1_RELIABILITY_HARDENING.md#proposed-m1-closure-gate)
 
@@ -69,6 +70,12 @@ experiment and reproducibility gates are met.
 
 ## Latest production evidence
 
+- **November 24, 15:46 UTC.** Both collectors and reliability timers were
+  active and enabled with zero restarts, zero failed jobs and no 429s in the
+  last hour. GTA VI stayed DEGRADED only for recorded incomplete scan attempts.
+  Sealed copies at a 15:46:16 UTC watermark matched their receipts and passed
+  integrity and foreign-key checks.
+  [Journal check](docs/PROJECT_HISTORY.md#2026-11-24-m1-48-hour-journal-check-passed)
 - **November 24, 09:39:48 UTC watermark.** Sealed GTA V and GTA VI copies
   matched their receipts and passed integrity and foreign-key checks. The
   GTA VI eight-page canary roster had 20/20 valid 60m features and 20/20 valid
@@ -98,8 +105,8 @@ first signal and the candidate shortlist.
    real 2/2/2 mechanism run awaits admissible cohorts; the formal 7/3/7
    benchmark and model adoption remain separate gates.
    [Protocol v1](docs/CHRONOLOGICAL_EVALUATION.md#benchmark-protocol-v1)
-2. With authorization, run the read-only 48-hour journal check, then decide on
-   the November 27 reboot rehearsal.
+2. The 48-hour journal check passed. Decide on the November 27 09:00 UTC
+   reboot rehearsal; it needs a fresh preflight and separate authorization.
 3. Audit each new UTC day with `--readiness`, record outages in UTC and keep
    the split boundaries predeclared before reading scores.
 4. The offline ranking register and fixture-based editor page are implemented.
