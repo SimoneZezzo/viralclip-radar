@@ -88,6 +88,85 @@ the total number of relevant clips. NDCG@K uses `log1p(24h views)` gains and
 ordering. Reports include per-game/day values and an unweighted macro average.
 No model is trained and no metric is computed for the audited one-day replay.
 
+## Benchmark protocol v1
+
+**Status.** Approved by the owner on 2026-11-24. It governs the first
+benchmark and is not yet implemented: evaluator `2b.3` and
+`observed-at-cutoff-v1` still compute only the metrics above. Freeze it before
+any validation metric is read (validation days of November 28–29 mature on
+November 30 at 00:05 UTC). Any later change needs a new protocol version and
+a dated entry in the project history.
+
+**Question.** Among the clips the radar has discovered by the cutoff, which
+ranking puts on top the clips with the highest 24-hour views and the highest
+growth after the cutoff? Reports state results "among clips observed by the
+radar", never across all of Twitch.
+
+| Element | Rule |
+| --- | --- |
+| Primary population | `observed-at-cutoff`: clips with `first_seen_at` at or before the prediction time (feature status `eligible` or `missing_observations`), per game and UTC creation day. Applies to both games; evaluate one game per run. |
+| Secondary population | `primary` (`legacy-search-day-v2`) for GTA V when admissible days exist, to check that conclusions hold beyond the observed population. |
+| Cutoffs | Strict 60 minutes is the main cutoff. 30, 35 and 65 minutes are separate analyses. |
+| Pool | Game × UTC creation day × cutoff. Recommendations are frozen before outcomes are read, as in `observed-at-cutoff-v1`. |
+| Target T1 | `views_24h` from a valid job-linked label. |
+| Target T2 | Growth after the cutoff: `log1p(views_24h) − log1p(latest_views)`, where `latest_views` is the latest eligible observation at or before the cutoff. Undefined for clips without an eligible observation; they stay in the ranking with missing scores. |
+| Methods | The four baselines above, unchanged. |
+
+**Metrics, per pool, for K = 10 and K = 50.**
+
+- **Top-K overlap.** The share of the method's first K labeled clips that
+  belong to the true top-K by the target. The true top-K includes every clip
+  tied with the K-th value; hits are capped at K.
+- **NDCG@50 for T1**, with `log1p(views_24h)` gains as above.
+- The existing Precision@10, Recall@10 and NDCG@10 with top-decile relevance
+  stay as diagnostics for continuity. They saturate on pools of thousands of
+  clips and cannot rank methods.
+
+**Primary endpoint.** T1 top-50 overlap at 60 minutes, on GTA VI. Fifty is
+the size of a shortlist a clipper can review. Key secondary endpoints: T2
+top-50 overlap at 60 minutes, and the K = 10 versions. The same endpoints
+are reported for GTA V.
+
+**References.** The random expectation of top-K overlap equals the true
+top-K size divided by the number of labeled clips in the pool; report it
+analytically for each pool. Ideal orderings score 1 by construction.
+`latest_views` is the reference every other method must beat.
+
+**Missing labels.** The main analysis uses the labeled subset: unlabeled clips
+leave both the method's order and the truth, as in `observed-at-cutoff-v1`.
+A sensitivity analysis keeps the frozen order and counts unlabeled clips among
+the first K as misses, without recording any view count for them. Report the
+label coverage of each method's first K.
+
+**Uncertainty.** The UTC day is the statistical unit. Report per-day values,
+the macro mean and a 95% percentile bootstrap interval that resamples days
+with replacement (2,000 resamples, seed `20261124`). For each method, report
+the paired difference from `latest_views` with the same resamples. A method
+beats `latest_views` only if the lower bound of that paired interval is above
+zero.
+
+**Thresholds.** A 2/2/2-day run proves the mechanism and supports no claim.
+A result needs at least 7 train, 3 validation and 7 test days per game and at
+least 500 valid test labels.
+
+| Run | Train | Validation | Test | Test complete |
+| --- | --- | --- | --- | --- |
+| Mechanism | November 24–25 | November 28–29 (start November 28) | December 2–3 (start December 2) | December 5, 00:05 UTC |
+| First result | November 24–30 | December 3–5 (start December 3) | December 8–14 (start December 8) | December 16, 00:05 UTC |
+
+Each day still needs audited admissibility. An excluded day is replaced by
+the first later admissible day and the following boundaries move before any
+metric is read. Results of the mechanism run cannot change methods, targets
+or metrics for the first result.
+
+**Implementation notes.** Add the protocol as new evaluator versions and keep
+`2b.3` and `observed-at-cutoff-v1` reproducible. Let the observed-at-cutoff
+evaluator take the game ID instead of fixing GTA VI. T2 needs no export
+change because `latest_views` is already in the candidates. Use a seeded
+`random.Random` for the bootstrap. Cover every rule with synthetic tests,
+including ties at the K-th value, pools smaller than K, missing scores and
+unlabeled clips among the first K.
+
 ## Research readiness and GTA V retirement
 
 The 2026-11-21 read-only audit counted valid labels on four UTC dates for

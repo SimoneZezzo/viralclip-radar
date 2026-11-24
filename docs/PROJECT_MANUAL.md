@@ -144,7 +144,20 @@ La seconda coorte misura il caso d'uso del ranking dal vivo, che ordina solo ci�
 | Classifica di un pool comparabile | Esiste come replay privato; come classifica per utenti e demo è prevista in M4. |
 | Verifica a 24 ore | La raccolta dell'esito esiste. Il collegamento con la previsione registrata va aggiunto senza mai modificare la previsione. |
 
-Il prossimo passo dichiarato è definire questo record e provarlo offline con una baseline e dati sintetici.
+**Bozza del registro, approvata il 24 novembre 2026.** Da implementare offline con dati sintetici prima di qualsiasi uso dal vivo.
+
+| Campo | Contenuto |
+| --- | --- |
+| `prediction_id` | Identificativo univoco del record. |
+| `clip_id`, `game_id` | Clip e categoria. |
+| `cutoff_minutes`, `prediction_at` | Cutoff e istante teorico della previsione (`created_at + cutoff`). |
+| `scored_at` | Istante UTC reale in cui lo score è stato calcolato; deve essere ≥ `prediction_at`. |
+| `score_version` | Metodo e versione (es. `baseline:latest_views:v1`, `model:<nome>:<hash>`), oppure `not_trained_yet` con la baseline di fallback indicata. |
+| `score`, `rank`, `pool_size` | Score, posizione e dimensione del pool (gioco × giorno UTC × cutoff) al momento del calcolo. |
+| `observation_ids` | Snapshot usati come feature, tutti con `observed_at` ≤ `prediction_at`. |
+| `source_watermark` | Ultima osservazione disponibile al calcolo. |
+
+Regole: i record sono append-only come gli snapshot; un ricalcolo crea un nuovo record con un nuovo `scored_at`, mai una modifica. L'esito a 24 ore si collega dopo, in una tabella separata, con lo stesso legame job/snapshot dell'export 2a.3. La shortlist per i clipper è la vista dei primi K record per pool. Il registro vive in un database separato da quello del collector, così il collector resta l'unico writer del proprio database.
 
 ## 8. Decisioni aperte
 

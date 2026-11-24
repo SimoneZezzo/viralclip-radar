@@ -88,15 +88,29 @@ experiment and reproducibility gates are met.
 
 ## Next actions
 
-1. With authorization, run the read-only 48-hour journal check, then decide on
+The [action plan](docs/ACTION_PLAN.md) sets the order of work and the split
+between agents. The end goal is a model that helps clippers choose clips whose
+TikTok, Shorts and Reels posts get the most views; Twitch ranking is the
+first signal and the candidate shortlist.
+
+1. Implement benchmark protocol v1, approved on November 24, in both
+   evaluators before November 28 (observed-at-cutoff population, 24h and
+   post-cutoff growth targets, top-K overlap, day bootstrap).
+   [Protocol v1](docs/CHRONOLOGICAL_EVALUATION.md#benchmark-protocol-v1)
+2. With authorization, run the read-only 48-hour journal check, then decide on
    the November 27 reboot rehearsal.
-2. Audit each new UTC day with `--readiness`, record outages in UTC and keep
+3. Audit each new UTC day with `--readiness`, record outages in UTC and keep
    the split boundaries predeclared before reading scores.
-3. Decide whether observed-at-cutoff becomes the primary benchmark for product
-   decisions, given that GTA VI primary coverage is blocked.
-4. Specify the live ranking record (prediction time, cutoff, score version)
-   and exercise it offline with a baseline and synthetic inputs.
-   [Live ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
+4. Implement the live ranking record approved on November 24 offline with a
+   baseline and synthetic inputs.
+   [Record draft](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
+5. Social track: YouTube Shorts only, observational (owner decision of
+   November 24). Feasibility is a **conditional GO** pending a 3–4 week pilot;
+   the deciding gate is Google's permission to keep view series beyond 30 days.
+   The pilot needs owner authorization for a Google Cloud project, API key and
+   live collection. Automated posting is deferred to future model validation.
+   [Feasibility](docs/YOUTUBE_SHORTS_FEASIBILITY.md) ·
+   [Social track](docs/ACTION_PLAN.md#3-due-binari-paralleli)
 
 ## Repository and workflow
 
