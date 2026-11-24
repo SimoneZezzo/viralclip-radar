@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>ViralClip Radar · Shortlist Twitch</title>
+  <title>ViralClip Radar · Twitch Shortlist</title>
   <link rel="stylesheet" href="/styles.css">
   <script type="module" src="/app.js"></script>
 </head>
@@ -15,48 +15,48 @@
         <span class="brand-mark" aria-hidden="true"><i></i></span>
         <span>ViralClip<span class="brand-accent"> Radar</span></span>
       </a>
-      <span class="demo-tag"><i></i> Demo locale · Dati sintetici</span>
+      <span class="demo-tag"><i></i> Local demo · Synthetic data</span>
     </div>
   </header>
   <main class="shell">
     <section class="page-intro" aria-labelledby="page-title">
       <div>
-        <h1 id="page-title">Shortlist Twitch</h1>
-        <p>Esplora la classifica di un gioco e prepara una clip per Shorts.</p>
+        <h1 id="page-title">Twitch Shortlist</h1>
+        <p>Rank clips by game and prepare them for Shorts.</p>
       </div>
       <div class="game-picker">
-        <label for="game">Gioco</label>
-        <select id="game" disabled><option>Caricamento…</option></select>
+        <label for="game">Game</label>
+        <select id="game" disabled><option>Loading…</option></select>
       </div>
     </section>
     <p id="page-error" class="message error" role="alert" hidden></p>
-    <section class="overview" aria-label="Dettagli della classifica">
+    <section class="overview" aria-label="Ranking details">
       <div><span>Cutoff</span><strong id="cutoff">—</strong></div>
-      <div><span>Metodo</span><strong id="method">—</strong></div>
-      <div><span>Clip nel pool</span><strong id="pool">—</strong></div>
-      <div><span>Giorno del pool</span><strong id="pool-day">—</strong></div>
+      <div><span>Method</span><strong id="method">—</strong></div>
+      <div><span>Clips in pool</span><strong id="pool">—</strong></div>
+      <div><span>Pool date</span><strong id="pool-day">—</strong></div>
     </section>
     <div class="workspace">
       <section class="panel leaderboard" aria-labelledby="ranking-title">
         <div class="panel-heading">
-          <h2 id="ranking-title">Classifica</h2>
-          <span id="score-header">Score</span>
+          <h2 id="ranking-title">Clip ranking</h2>
+          <span>Score / 100</span>
         </div>
-        <ul id="ranking" class="ranking" aria-label="Clip ordinate per score"></ul>
+        <ul id="ranking" class="ranking" aria-label="Clips ranked by score"></ul>
         <p id="ranking-note" class="panel-note"></p>
       </section>
       <section id="details" class="panel details" aria-labelledby="details-title" hidden>
         <div class="panel-heading">
-          <h2 id="details-title">Clip selezionata</h2>
+          <h2 id="details-title">Selected clip</h2>
           <span class="selected-rank" id="selected-rank"></span>
         </div>
         <div class="details-inner">
           <div id="preview" class="preview scene-0">
-            <button id="play" class="play" type="button" aria-label="Riproduci anteprima sintetica">
+            <button id="play" class="play" type="button" aria-label="Play clip preview">
               <span aria-hidden="true"></span>
             </button>
-            <video id="video" controls playsinline hidden aria-label="Anteprima del video"></video>
-            <span id="preview-tag" class="preview-tag">Anteprima sintetica</span>
+            <video id="video" controls playsinline hidden aria-label="Video preview"></video>
+            <span class="preview-tag">Synthetic preview</span>
           </div>
           <div class="clip-info">
             <div>
@@ -66,25 +66,26 @@
             <span id="duration" class="duration"></span>
           </div>
           <dl class="record">
-            <div><dt>Versione</dt><dd id="version"></dd></div>
-            <div><dt>Views osservate</dt><dd id="observed"></dd></div>
-            <div><dt>Cutoff della clip</dt><dd id="prediction"></dd></div>
+            <div><dt>Version</dt><dd id="version"></dd></div>
+            <div><dt>Potential score</dt><dd id="clip-score"></dd></div>
+            <div><dt>Clip cutoff</dt><dd id="prediction"></dd></div>
           </dl>
           <div class="actions">
-            <button id="edit" type="button" class="primary">Modifica con reviewer + external editor</button>
-            <button id="download" type="button" class="secondary">↓ &nbsp; Scarica clip</button>
+            <button id="edit" type="button" class="primary">Edit with reviewer + external editor</button>
+            <button id="download" type="button" class="secondary">↓ &nbsp; Download clip</button>
           </div>
           <p id="availability" class="availability"></p>
           <details id="file-panel" class="file-panel">
-            <summary>Usa un file autorizzato</summary>
-            <label for="file">File video locale</label>
+            <summary>Use an authorized local video</summary>
+            <p>If Twitch download is unavailable, use a copy of this clip that you have permission to edit.</p>
+            <label for="file">Local video file</label>
             <input id="file" type="file" accept="video/*">
-            <label class="check"><input id="allowed" type="checkbox"> Ho il permesso di elaborare questo file</label>
-            <p>Il browser elabora in locale fino a 4 secondi, con sottotitoli di esempio.</p>
+            <label class="check"><input id="allowed" type="checkbox"> I have permission to edit this file</label>
+            <p>The demo processes up to 4 seconds in your browser and adds sample captions.</p>
           </details>
           <div id="job-section" class="job" hidden>
             <p id="job" role="status" aria-live="polite"></p>
-            <a id="export" class="secondary" hidden>↓ &nbsp; Esporta Short simulato</a>
+            <a id="export" class="secondary" hidden>↓ &nbsp; Export sample Short</a>
           </div>
         </div>
       </section>

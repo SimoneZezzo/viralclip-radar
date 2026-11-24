@@ -8,7 +8,7 @@ function loadArtwork() {
     image.onload = () => resolve(image);
     image.onerror = () => {
       artwork = undefined;
-      reject(new Error("Anteprima sintetica indisponibile."));
+      reject(new Error("Sample preview unavailable."));
     };
     image.src = "/gameplay.jpg";
   });
@@ -22,7 +22,7 @@ async function loadVideo(file, signal) {
   video.playsInline = true;
   try {
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error("Apertura del video scaduta.")), 8000);
+      const timeout = setTimeout(() => reject(new Error("Opening the video timed out.")), 8000);
       const settle = (callback) => (value) => {
         clearTimeout(timeout);
         signal.removeEventListener("abort", abort);
@@ -31,7 +31,7 @@ async function loadVideo(file, signal) {
       const abort = () => settle(reject)(signal.reason);
       signal.addEventListener("abort", abort, { once: true });
       video.onloadeddata = settle(resolve);
-      video.onerror = () => settle(reject)(new Error("Il browser non riesce a leggere questo video."));
+      video.onerror = () => settle(reject)(new Error("This browser could not read the video."));
       if (signal.aborted) abort();
       else video.src = url;
     });
@@ -70,11 +70,11 @@ function drawFrame(ctx, source, clip, vertical, elapsed, isLocalFile) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#d1f95b";
   ctx.font = "bold 13px system-ui";
-  ctx.fillText(vertical ? "SOTTOTITOLI DIMOSTRATIVI" : "VIRALCLIP RADAR · VIDEO SINTETICO",
+  ctx.fillText(vertical ? "SAMPLE CAPTIONS" : isLocalFile ? "LOCAL VIDEO" : "VIRALCLIP RADAR · SAMPLE VIDEO",
     width / 2, height - (vertical ? 66 : 30));
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 20px system-ui";
-  ctx.fillText(isLocalFile ? "Anteprima del montaggio" : clip.title, width / 2,
+  ctx.fillText(isLocalFile ? "Edit preview" : clip.title, width / 2,
     height - (vertical ? 35 : 8), width - 24);
 }
 
@@ -106,7 +106,7 @@ function record(canvas, draw, duration, signal) {
       recorder.onstop = () => {
         cleanup();
         if (!chunks.length) {
-          reject(new Error("Nessun fotogramma registrato."));
+          reject(new Error("No video frames were recorded."));
           return;
         }
         const mime = recorder.mimeType || format || "video/webm";
@@ -114,7 +114,7 @@ function record(canvas, draw, duration, signal) {
       };
       recorder.onerror = () => {
         cleanup();
-        reject(new Error("Registrazione dell'anteprima non riuscita."));
+        reject(new Error("Could not record the preview."));
       };
       signal.addEventListener("abort", abort, { once: true });
       draw(0);
@@ -143,7 +143,7 @@ function record(canvas, draw, duration, signal) {
 
 export async function makeVideo(clip, { vertical = false, file, signal }) {
   if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
-    throw new Error("Questo browser non supporta la creazione dell'anteprima.");
+    throw new Error("This browser cannot create a video preview.");
   }
   const media = file
     ? await loadVideo(file, signal)
@@ -151,7 +151,7 @@ export async function makeVideo(clip, { vertical = false, file, signal }) {
   try {
     signal.throwIfAborted();
     if (!Number.isFinite(media.duration) || media.duration <= 0) {
-      throw new Error("Durata del video non disponibile.");
+      throw new Error("Video duration is unavailable.");
     }
     const canvas = document.createElement("canvas");
     canvas.width = vertical ? 360 : 640;

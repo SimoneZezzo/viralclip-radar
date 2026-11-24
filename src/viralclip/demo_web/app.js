@@ -13,12 +13,12 @@ const preview = byId("preview");
 const video = byId("video");
 const exportLink = byId("export");
 const job = byId("job");
-const number = new Intl.NumberFormat("it-IT");
-const date = new Intl.DateTimeFormat("it-IT", {
+const number = new Intl.NumberFormat("en-US");
+const date = new Intl.DateTimeFormat("en-GB", {
   day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
 });
-const clock = new Intl.DateTimeFormat("it-IT", {
-  hour: "2-digit", minute: "2-digit", timeZone: "UTC",
+const clock = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit", minute: "2-digit", timeZone: "UTC", hourCycle: "h23",
 });
 let run;
 let selected;
@@ -54,11 +54,11 @@ function updateActions() {
   edit.disabled = Boolean(active) || !(selected.media.edit_original || fileSource());
   download.disabled = Boolean(active) || !selected.media.download;
   play.disabled = Boolean(active) || !(selected.media.edit_original || fileSource());
-  let message = "Download e montaggio simulati.";
+  let message = "Download and editing are simulated in this demo.";
   if (selected.scenario === "file") {
-    message = "Download Twitch indisponibile: manca l'accesso editor. Puoi usare un file autorizzato.";
+    message = "Twitch download is unavailable for this clip. You can edit a copy you have permission to use.";
   } else if (selected.scenario === "blocked") {
-    message = "Download e montaggio indisponibili: il creator non ha autorizzato l'uso della clip.";
+    message = "Download and editing are unavailable because creator permission is missing.";
   }
   byId("availability").textContent = message;
 }
@@ -77,12 +77,12 @@ function selectClip(clip, button) {
   byId("file-panel").open = false;
   byId("file-panel").hidden = !clip.media.accept_file;
   preview.className = "preview scene-" + clip.scene;
-  byId("selected-rank").textContent = clip.rank === null ? "Senza score" : "Posizione " + clip.rank;
+  byId("selected-rank").textContent = clip.rank === null ? "Unranked" : "Rank " + clip.rank;
   byId("clip-title").textContent = clip.title;
   byId("clip-channel").textContent = "@" + clip.channel;
   byId("duration").textContent = clip.duration + " s";
   byId("version").textContent = run.score_version;
-  byId("observed").textContent = clip.latest_views === null ? "Mancanti" : number.format(clip.latest_views);
+  byId("clip-score").textContent = clip.score === null ? "Unavailable" : clip.score + " / 100";
   byId("prediction").textContent = clock.format(new Date(clip.prediction_at)) + " UTC";
   details.hidden = false;
   updateActions();
@@ -99,13 +99,12 @@ function renderRanking(data) {
   run = data.run;
   const baseline = run.method === "baseline";
   byId("cutoff").textContent = run.cutoff_minutes + " min";
-  byId("method").textContent = baseline ? "Baseline latest_views" : "Modello simulato";
+  byId("method").textContent = baseline ? "Baseline" : "Simulated model";
   byId("pool").textContent = number.format(run.pool_size);
   byId("pool-day").textContent = date.format(new Date(run.pool_day + "T00:00:00Z")) + " (UTC)";
-  byId("score-header").textContent = baseline ? "Views al cutoff" : "Stima views a 24 h";
   byId("ranking-note").textContent = baseline
-    ? "Modello non addestrato per questo gioco. L'ordine usa le ultime views disponibili al cutoff."
-    : "Le stime sono valori di esempio. Le clip senza osservazioni entro il cutoff restano senza score.";
+    ? "This game uses a baseline. Scores show relative position within the selected pool."
+    : "Scores are relative to the selected pool. Clips with insufficient data stay unranked.";
   list.replaceChildren();
   for (const clip of data.predictions) {
     const item = document.createElement("li");
@@ -143,14 +142,14 @@ async function loadRanking(gameId) {
   try {
     const query = gameId ? "?" + new URLSearchParams({ game_id: gameId }) : "";
     const response = await fetch("/api/ranking" + query);
-    if (!response.ok) throw new Error("Classifica indisponibile.");
+    if (!response.ok) throw new Error("Ranking unavailable.");
     const data = await response.json();
     game.replaceChildren(...data.games.map((option) => new Option(option.name, option.id)));
     game.value = data.run.game_id;
     renderRanking(data);
   } catch {
     list.replaceChildren();
-    byId("page-error").textContent = "Impossibile caricare il registro. Riprova ricaricando la pagina.";
+    byId("page-error").textContent = "Could not load the ranking. Refresh the page to try again.";
     byId("page-error").hidden = false;
   } finally {
     game.disabled = false;
@@ -176,7 +175,7 @@ async function runMedia(action) {
   active = controller;
   clearPreview();
   updateActions();
-  showJob(action === "edit" ? "Montaggio simulato in corso…" : "Preparazione dell'anteprima…");
+  showJob(action === "edit" ? "Creating the sample edit…" : "Preparing the video…");
   try {
     const result = await makeVideo(clip, {
       vertical: action === "edit", file, signal: controller.signal,
@@ -184,11 +183,11 @@ async function runMedia(action) {
     if (active !== controller) return;
     if (action === "edit" && clip.scenario === "render_error" && !renderFailures.has(clip.clip_id)) {
       renderFailures.add(clip.clip_id);
-      throw new Error("Render simulato non riuscito. Premi di nuovo Modifica per riprovare.");
+      throw new Error("The sample render failed. Start the edit again to retry.");
     }
     if (action === "download") {
-      downloadFile(result, clip.clip_id + "-originale-sintetico");
-      showJob("Download sintetico pronto.");
+      downloadFile(result, clip.clip_id + "-synthetic-original");
+      showJob("Sample download ready.");
     } else {
       resultUrl = URL.createObjectURL(result.blob);
       video.src = resultUrl;
@@ -197,16 +196,16 @@ async function runMedia(action) {
       preview.classList.add("has-video");
       if (action === "edit") {
         exportLink.href = resultUrl;
-        exportLink.download = clip.clip_id + "-short-simulato." + result.extension;
+        exportLink.download = clip.clip_id + "-sample-short." + result.extension;
         exportLink.hidden = false;
-        showJob("Export simulato pronto · 9:16 · sottotitoli di esempio");
+        showJob("Sample export ready · 9:16 · sample captions");
       } else {
         showJob("");
         video.play().catch(() => {});
       }
     }
   } catch (error) {
-    if (active === controller) showJob(error.message || "Video non disponibile.", true);
+    if (active === controller) showJob(error.message || "Video unavailable.", true);
   } finally {
     if (active === controller) {
       active = undefined;

@@ -17,26 +17,27 @@ from viralclip.storage.database import to_utc_iso, utc_now
 REGISTRY = Path("data/demo/predictions.sqlite3")
 ASSETS = Path(__file__).with_name("demo_web")
 APPLICATION_ID = 0x56435244
+FIXTURE_REVISION = "fixture-v2"
 CUTOFF = 60
 DAY = datetime(2026, 11, 22, tzinfo=UTC)
 GAMES = {GTA_VI_GAME_ID: "GTA VI", "32982": "GTA V"}
 
-# title, synthetic channel, duration, age-52 view count, synthetic model output,
+# title, synthetic channel, duration, age-52 view count, estimated views feature,
 # media scenario, preview scene
 CLIPS = {
     GTA_VI_GAME_ID: (
-        ("Fuga sul cavalcavia", "neon_driver", 28, 128, 1840, "open", 0),
-        ("Parcheggio al millimetro", "city_loop", 19, 96, 1420, "open", 1),
-        ("Una scorciatoia di troppo", "last_corner", 34, 118, 1190, "file", 2),
-        ("Deriva sulla costa", "ocean_shift", 22, 71, 860, "render_error", 3),
-        ("Rientro sotto la pioggia", "after_rain", 41, 56, 620, "blocked", 4),
-        ("L'ultimo giro", "neon_driver", 26, None, None, "open", 5),
+        ("Overpass getaway", "neon_driver", 28, 128, 1840, "open", 0),
+        ("Parking with inches to spare", "city_loop", 19, 96, 1420, "open", 1),
+        ("One shortcut too many", "last_corner", 34, 118, 1190, "file", 2),
+        ("Coastal drift", "ocean_shift", 22, 71, 860, "render_error", 3),
+        ("Back in the rain", "after_rain", 41, 56, 620, "blocked", 4),
+        ("One last lap", "neon_driver", 26, None, None, "open", 5),
     ),
     "32982": (
-        ("Atterraggio sul tetto", "roof_runner", 21, 98, None, "open", 2),
-        ("Una svolta impossibile", "west_coast", 35, 79, None, "file", 0),
-        ("L'uscita dal tunnel", "late_shift", 32, 45, None, "render_error", 4),
-        ("Giro al tramonto", "roof_runner", 24, 22, None, "blocked", 3),
+        ("Rooftop landing", "roof_runner", 21, 98, None, "open", 2),
+        ("The impossible turn", "west_coast", 35, 79, None, "file", 0),
+        ("Out of the tunnel", "late_shift", 32, 45, None, "render_error", 4),
+        ("Sunset lap", "roof_runner", 24, 22, None, "blocked", 3),
     ),
 }
 
@@ -113,6 +114,15 @@ def fixture_rows(game_id: str) -> list[dict]:
         )
         eligible = [item for item in observations if item[1] <= prediction]
         latest = eligible[-1] if eligible else None
+        latest_views = latest[2] if latest else None
+        # This fixture stand-in combines the estimate with a separate cutoff feature.
+        output = latest_views
+        if game_id == GTA_VI_GAME_ID:
+            output = (
+                estimate + 2 * latest_views
+                if estimate is not None and latest_views is not None
+                else None
+            )
         rows.append(
             {
                 "clip_id": clip_id,
@@ -122,16 +132,26 @@ def fixture_rows(game_id: str) -> list[dict]:
                 "scenario": scenario,
                 "scene": scene,
                 "prediction_at": to_utc_iso(prediction),
-                "score": (estimate if game_id == GTA_VI_GAME_ID else latest[2]) if latest else None,
-                "latest_views": latest[2] if latest else None,
+                "output": output,
+                "latest_views": latest_views,
                 "latest_observed_at": to_utc_iso(latest[1]) if latest else None,
                 "fixture_watermark": to_utc_iso(observations[-1][1]) if observations else None,
                 "observation_ids": json.dumps([item[0] for item in eligible]),
             }
         )
-    return sorted(
-        rows, key=lambda row: (row["score"] is None, -(row["score"] or 0), row["clip_id"])
-    )
+    rows.sort(key=lambda row: (row["output"] is None, -(row["output"] or 0), row["clip_id"]))
+    scored = [row["output"] for row in rows if row["output"] is not None]
+    for row in rows:
+        output = row["output"]
+        if output is None:
+            row["score"] = None
+            continue
+        highest, lowest = scored[0], scored[-1]
+        # Equal outputs share the top score when there is no spread.
+        row["score"] = (
+            100 if highest == lowest else 1 + round(99 * (output - lowest) / (highest - lowest))
+        )
+    return rows
 
 
 def prepare_registry(path: Path) -> None:
@@ -147,7 +167,7 @@ def prepare_registry(path: Path) -> None:
         db.execute("PRAGMA defer_foreign_keys=ON")
         now = utc_now()
         for game_id in GAMES:
-            run_id = f"fixture-v1:{game_id}"
+            run_id = f"{FIXTURE_REVISION}:{game_id}"
             if db.execute("SELECT 1 FROM demo_ranking_runs WHERE run_id=?", (run_id,)).fetchone():
                 continue
             rows = fixture_rows(game_id)
@@ -186,7 +206,7 @@ def prepare_registry(path: Path) -> None:
                     CUTOFF,
                     scored_at,
                     watermark,
-                    "fixture:simulated-views:v1" if simulated else "baseline:latest_views:v1",
+                    "fixture:potential:v2" if simulated else "baseline:latest_views:v2",
                     "simulated_model" if simulated else "baseline",
                     "simulated" if simulated else "not_trained_yet",
                     len(rows),
@@ -200,15 +220,16 @@ def read_ranking(path: Path, game_id: str) -> dict:
         db.execute("PRAGMA query_only=ON")
         run = dict(
             db.execute(
-                """SELECT * FROM demo_ranking_runs WHERE game_id=?
-                   ORDER BY scored_at DESC, run_id DESC LIMIT 1""",
-                (game_id,),
+                "SELECT * FROM demo_ranking_runs WHERE run_id=?",
+                (f"{FIXTURE_REVISION}:{game_id}",),
             ).fetchone()
         )
         predictions = [
             dict(row)
             for row in db.execute(
-                """SELECT * FROM demo_predictions WHERE run_id=?
+                """SELECT prediction_id, clip_id, title, channel, duration, scenario, scene,
+                          prediction_at, score, rank, latest_observed_at, observation_ids
+                   FROM demo_predictions WHERE run_id=?
                    ORDER BY rank IS NULL, rank, clip_id""",
                 (run["run_id"],),
             )

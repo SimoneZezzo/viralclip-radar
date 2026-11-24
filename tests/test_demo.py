@@ -23,15 +23,20 @@ def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(t
     assert baseline["run"]["model_status"] == "not_trained_yet"
     rows = model["predictions"]
     assert [row["rank"] for row in rows] == [1, 2, 3, 4, 5, None]
-    assert rows[0]["latest_views"] == 128
+    assert [row["score"] for row in rows] == [100, 65, 51, 21, 1, None]
+    assert all("latest_views" not in row for row in rows)
     assert rows[0]["observation_ids"] == [rows[0]["clip_id"] + ":52"]
     assert rows[0]["latest_observed_at"] < rows[0]["prediction_at"] < model["run"]["scored_at"]
     assert rows[-1]["score"] is None
     assert rows[2]["media"] == {"download": False, "edit_original": False, "accept_file": True}
     assert rows[4]["media"] == {"download": False, "edit_original": False, "accept_file": False}
-    assert [row["score"] for row in baseline["predictions"]] == [98, 79, 45, 22]
+    assert [row["score"] for row in baseline["predictions"]] == [100, 75, 31, 1]
 
     with closing(sqlite3.connect(path)) as db:
+        assert db.execute(
+            "SELECT latest_views FROM demo_predictions WHERE prediction_id=?",
+            (rows[0]["prediction_id"],),
+        ).fetchone() == (128,)
         with pytest.raises(sqlite3.IntegrityError, match="Append-only"):
             db.execute("UPDATE demo_predictions SET score=1")
         with pytest.raises(sqlite3.IntegrityError, match="Sealed run"):
@@ -45,6 +50,19 @@ def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(t
                           scene, prediction_at, score, rank + 100, latest_views, latest_observed_at,
                           observation_ids FROM demo_predictions LIMIT 1"""
             )
+
+
+def test_demo_seeds_a_new_fixture_revision_without_replacing_existing_runs(tmp_path, monkeypatch):
+    path = tmp_path / "ranking.sqlite3"
+    with monkeypatch.context() as previous:
+        previous.setattr("viralclip.demo.FIXTURE_REVISION", "fixture-v1")
+        prepare_registry(path)
+        original = read_ranking(path, GTA_VI_GAME_ID)
+
+    prepare_registry(path)
+    assert read_ranking(path, GTA_VI_GAME_ID)["run"]["run_id"] == f"fixture-v2:{GTA_VI_GAME_ID}"
+    monkeypatch.setattr("viralclip.demo.FIXTURE_REVISION", "fixture-v1")
+    assert read_ranking(path, GTA_VI_GAME_ID) == original
 
 
 def test_demo_rejects_an_existing_unrelated_database(tmp_path):
@@ -68,7 +86,10 @@ def test_demo_serves_only_supported_games_and_static_assets(tmp_path):
                 client.request("GET", "/")
                 response = client.getresponse()
                 assert response.status == 200
-                assert b"Modifica con reviewer + external editor" in response.read()
+                page = response.read()
+                assert b'lang="en"' in page
+                assert b"Edit with reviewer + external editor" in page
+                assert b"Use an authorized local video" in page
                 client.request("GET", "/gameplay.jpg")
                 response = client.getresponse()
                 assert response.read().startswith(b"\xff\xd8\xff")

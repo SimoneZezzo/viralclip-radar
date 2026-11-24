@@ -30,10 +30,10 @@ dated samples below is **UNKNOWN**.
 ## Open gates
 
 **M1 closeout PENDING.** The paired 48-hour journal check has been ready since
-November 24 at 15:25:11 UTC and needs an authorized read-only SSH session. The
-candidate reboot window is November 27 at 09:00 UTC, chosen to protect the
-November 24–25 cohorts. It requires the journal result, a fresh preflight and
-separate reboot authorization.
+November 24 at 15:25:11 UTC (16:25:11 in Italy) and needs an authorized
+read-only SSH session. The candidate reboot window is November 27 at
+09:00 UTC, chosen to protect the November 24–25 cohorts. It requires the
+journal result, a fresh preflight and separate reboot authorization.
 [Closeout sequence](docs/PROJECT_HISTORY.md#2026-11-24-m1-gate-and-m2-calendar-preparation) ·
 [M1 closure gate](docs/M1_RELIABILITY_HARDENING.md#proposed-m1-closure-gate)
 
@@ -104,21 +104,30 @@ first signal and the candidate shortlist.
    the split boundaries predeclared before reading scores.
 4. The offline ranking register and fixture-based editor page are implemented.
    The local entry point is `viralclip demo`. The page distinguishes
-   simulated model scores, baseline scores and missing scores.
+   simulated model scores, baseline scores and missing scores. The UI is
+   in English and shows a relative 1–100 score for each ranked clip.
    [Ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
-5. With approved access and a cleared clip, test real Twitch download and the
-   reviewer + external editor export while the benchmark cohorts mature. Training and
+5. With approved access and a cleared clip, test real Twitch download and
+   export with the editor's own reviewer and external editor accounts while the
+   benchmark cohorts mature. Training and
    public scoring on historical Twitch data remain subject to terms
    verification. The owner runs the Shorts trial after delivery. Creator
    recruitment for training remains deferred until after the demo.
+   [Operating plan](docs/ACTION_PLAN.md#5-piano-operativo) ·
+   [reviewer–reviewer exchange](docs/DEMO_REVIEW.md)
 
 ## Repository and workflow
+
+The direct reviewer-to-reviewer round trip passed the synthetic cutoff probe on
+November 24 using the existing a subscription login and network access.
+See the [review workflow](docs/REVIEW_INTEGRATION.md)
+for the current sharing scope and synthetic acceptance probe.
 
 Development continues on local `main`. The private GitHub repository was
 deleted on November 24 after the initial import passed CI on Windows and
 Ubuntu; future publication will use a reviewed release copy.
 [Import evidence](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-and-verification)
-On November 24, strict offline verification passed 7/7 checks and 238 tests on
+On November 24, strict offline verification passed 7/7 checks and 257 tests on
 Windows. Workflow phases P0–P2 are GO locally.
 [P0–P2 evidence](docs/PROJECT_HISTORY.md#2026-11-19-p2-context-and-token-efficiency)
 

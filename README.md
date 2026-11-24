@@ -11,15 +11,21 @@ Run `uv run --offline --no-sync viralclip demo` from the checkout and open
 
 The page reads a synthetic, append-only ranking register at
 `data/demo/predictions.sqlite3`. GTA VI shows simulated model scores and
-GTA V shows the `latest_views` baseline. The media buttons demonstrate
-synthetic download and a local 9:16 export. **Una scorciatoia di troppo**
-exercises the authorized-file path. **Deriva sulla costa** simulates a
+GTA V shows baseline scores. The score runs from 1 to 100 relative to the
+selected game and pool. Estimated views are an internal input to the
+simulated model. The media buttons demonstrate synthetic download and a
+local 9:16 export. **One shortcut too many** shows when to use a local
+video you already have permission to edit. **Coastal drift** simulates a
 render failure on the first attempt and allows a retry.
 
 Media processing uses browser Canvas and MediaRecorder. For a supplied
 video, it produces a silent sample of up to four seconds with example
 captions. Source video and generated files stay on the computer. The demo
 uses simulated providers and needs no account or credentials.
+
+The planned live edit opens in the editor's own reviewer session. The editor
+authorizes the external editor connector through their own external editor account.
+[external editor connector](https://example.invalid/editor/mcp)
 
 ## Quick start (Windows PowerShell)
 
