@@ -24,12 +24,11 @@ Last updated 2026-11-24 (Europe/Rome).
 
 ## GitHub source repository
 
-The reviewed source import targets `main` in the
-[private development repository](https://github.com/SimoneZezzo/viralclip-radar).
-The import removes the VPS
-address from historical runbooks. Original local revisions referenced in
-deployment evidence identify the artifacts used at the time.
-[Import decision](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-preparation)
+The [private development repository](https://github.com/SimoneZezzo/viralclip-radar)
+hosts the reviewed `main` branch. The first import passed the offline workflow
+on Windows and Ubuntu. Historical deployment evidence retains the original
+local revisions that identify the deployed artifacts.
+[Import and verification](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-and-verification)
 
 ## Current priority
 
