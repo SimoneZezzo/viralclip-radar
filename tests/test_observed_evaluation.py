@@ -199,6 +199,47 @@ def test_benchmark_selects_one_exact_game_from_multiple_exports(workspace):
     assert "other-" not in (output / "recommendations.csv").read_text(encoding="utf-8")
 
 
+def sparse_export(root, name, game):
+    """An export whose only labeled day cannot meet any split on its own."""
+    path = root / "data" / (name + ".sqlite3")
+    with closing(Database(path)) as db:
+        db.upsert_game(game, "Sparse synthetic game", START)
+        for index in range(12):
+            cid = f"sparse-{index:02d}"
+            db.record_clip(
+                {"id": cid, "created_at": START, "view_count": index},
+                game,
+                START + 15 * MINUTE,
+                None,
+            )
+            job = db.connection.execute(
+                "SELECT job_id FROM jobs WHERE clip_id=? AND target_age_seconds=86400", (cid,)
+            ).fetchone()[0]
+            db.add_scheduled_snapshot(cid, START + DAY, 100 + index, 86400, [job])
+        now = END + MATURITY
+        db.record_clip({"id": "sparse-stamp", "created_at": now, "view_count": 0}, game, now, None)
+    artifact = root / "data" / name
+    extract(path, Selection(START, END, (game,)), artifact)
+    return artifact
+
+
+def test_benchmark_scores_one_game_when_the_other_lacks_days(workspace):
+    source = make_export(workspace, "complete", game="42")
+    sparse = sparse_export(workspace, "sparse", "43")
+    output = workspace / "data" / "single"
+    result = cli(
+        source, output, "--protocol", "benchmark-v1", "--game-id", "42", additional=(sparse,)
+    )
+    assert result.returncode == 0, result.stderr
+    report = load_report(output)
+    assert report["status"] == "MECHANISM ONLY"
+    assert report["by_cutoff_minutes"]["60"]["rankable_days_by_split"] == {
+        "train": 2,
+        "validation": 2,
+        "test": 2,
+    }
+
+
 def load_report(directory):
     return json.loads((directory / "evaluation.json").read_text(encoding="utf-8"))
 

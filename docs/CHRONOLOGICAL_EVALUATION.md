@@ -176,6 +176,15 @@ the first later admissible day and the following boundaries move before any
 metric is read. Results of the mechanism run cannot change methods, targets
 or metrics for the first result.
 
+**Statistics for both cohorts.** Benchmark v1 is the place for interval
+estimates and references: it serves `observed-at-cutoff` and `primary`, scores
+one exact game per run even when another exported game lacks days, and reports
+the day bootstrap, the paired difference from `latest_views`, the analytic
+random expectation and the ideal ordering per pool. Evaluators `2b.3` and
+`observed-at-cutoff-v1` stay unchanged so earlier runs remain reproducible.
+A macro summary of the random reference, if wanted, needs a new protocol
+version.
+
 **Implementation notes.** Add the protocol as new evaluator versions and keep
 `2b.3` and `observed-at-cutoff-v1` reproducible. Let the observed-at-cutoff
 evaluator take the game ID instead of fixing GTA VI. T2 needs no export
