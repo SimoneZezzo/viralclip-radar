@@ -25,7 +25,7 @@ dated samples below is **UNKNOWN**.
 | 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Paired 48-hour journal check PASS (November 24). Reboot rehearsal authorized for November 27 09:00 UTC. Open: reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
 | 3. Machine learning | Pending validated baselines and enough mature labels. How much to invest is decided at the end of M2. |
-| 4. Portfolio demo | Synthetic page and prediction registry implemented locally. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
+| 4. Portfolio demo | Synthetic page and prediction registry implemented locally. The collector-backed ranking registry (`rank`, `link-outcomes`, `shortlist`) is implemented and tested on fixtures only; the demo now reads it over a labeled synthetic collector database. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
 
 ## Open gates
 
@@ -71,6 +71,13 @@ experiment and reproducibility gates are met.
 
 ## Latest production evidence
 
+- **November 24, 16:27 UTC.** A read-only `health` run over SSH reported
+  both collectors HEALTHY. GTA V: discovery 41 s old, 0 overdue jobs, 0
+  operational errors in the last hour. GTA VI: 63 overdue jobs (oldest
+  12.1 s), 0 execution failures, 0 operational errors; coverage remains
+  uncertified. Both services active and enabled with 0 restarts; both
+  reliability timers scheduled; 29 GB free.
+  [Health check](docs/PROJECT_HISTORY.md#2026-11-24-read-only-health-check-demo-on-the-registry-and-doc-trimming)
 - **November 24, 15:46 UTC.** Both collectors and reliability timers were
   active and enabled with zero restarts, zero failed jobs and no 429s in the
   last hour. GTA VI stayed DEGRADED only for recorded incomplete scan attempts.

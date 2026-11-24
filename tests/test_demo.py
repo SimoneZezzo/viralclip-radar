@@ -20,12 +20,16 @@ def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(t
     prepare_registry(path)
     assert read_ranking(path, GTA_VI_GAME_ID) == model
     assert model["run"]["method"] == "simulated_model"
+    assert model["run"]["model_status"] == "simulated"
+    assert baseline["run"]["method"] == "baseline"
     assert baseline["run"]["model_status"] == "not_trained_yet"
+    assert baseline["run"]["score_version"] == "baseline:latest_views:v1"
     rows = model["predictions"]
     assert [row["rank"] for row in rows] == [1, 2, 3, 4, 5, None]
     assert [row["score"] for row in rows] == [100, 65, 51, 21, 1, None]
     assert all("latest_views" not in row for row in rows)
-    assert rows[0]["observation_ids"] == [rows[0]["clip_id"] + ":52"]
+    # Only the 52-minute observation precedes the 60-minute cutoff.
+    assert all(len(row["observation_ids"]) == 1 for row in rows)
     assert rows[0]["latest_observed_at"] < rows[0]["prediction_at"] < model["run"]["scored_at"]
     assert rows[-1]["score"] is None
     assert rows[2]["media"] == {"download": False, "edit_original": False, "accept_file": True}
@@ -34,22 +38,22 @@ def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(t
 
     with closing(sqlite3.connect(path)) as db:
         assert db.execute(
-            "SELECT latest_views FROM demo_predictions WHERE prediction_id=?",
+            "SELECT latest_views FROM predictions WHERE prediction_id=?",
             (rows[0]["prediction_id"],),
         ).fetchone() == (128,)
         with pytest.raises(sqlite3.IntegrityError, match="Append-only"):
-            db.execute("UPDATE demo_predictions SET score=1")
-        with pytest.raises(sqlite3.IntegrityError, match="Sealed run"):
+            db.execute("UPDATE predictions SET score=1")
+        with pytest.raises(sqlite3.IntegrityError, match="sealed"):
             db.execute(
-                "INSERT OR REPLACE INTO demo_predictions SELECT * FROM demo_predictions LIMIT 1"
+                """INSERT INTO predictions (run_id, clip_id, game_id, created_at, cutoff_minutes,
+                   prediction_at, scored_at, feature_status, observation_ids)
+                   SELECT run_id, 'extra', game_id, created_at, cutoff_minutes, prediction_at,
+                          scored_at, feature_status, observation_ids FROM predictions LIMIT 1"""
             )
-        with pytest.raises(sqlite3.IntegrityError, match="Sealed run"):
-            db.execute(
-                """INSERT INTO demo_predictions
-                   SELECT prediction_id + 100, run_id, 'extra', title, channel, duration, scenario,
-                          scene, prediction_at, score, rank + 100, latest_views, latest_observed_at,
-                          observation_ids FROM demo_predictions LIMIT 1"""
-            )
+    collector = tmp_path / "ranking-synthetic-collector.sqlite3"
+    with closing(sqlite3.connect(collector)) as db:
+        names = [name for (name,) in db.execute("SELECT name FROM games")]
+    assert names and all("SYNTHETIC / NOT REAL TWITCH DATA" in name for name in names)
 
 
 def test_demo_seeds_a_new_fixture_revision_without_replacing_existing_runs(tmp_path, monkeypatch):
@@ -60,7 +64,7 @@ def test_demo_seeds_a_new_fixture_revision_without_replacing_existing_runs(tmp_p
         original = read_ranking(path, GTA_VI_GAME_ID)
 
     prepare_registry(path)
-    assert read_ranking(path, GTA_VI_GAME_ID)["run"]["run_id"] == f"fixture-v2:{GTA_VI_GAME_ID}"
+    assert read_ranking(path, GTA_VI_GAME_ID)["run"]["run_id"] == f"fixture-v3:{GTA_VI_GAME_ID}"
     monkeypatch.setattr("viralclip.demo.FIXTURE_REVISION", "fixture-v1")
     assert read_ranking(path, GTA_VI_GAME_ID) == original
 

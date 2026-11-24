@@ -1,8 +1,7 @@
 # GTA VI launch collector pilot
 
-**Prepared for review.** Keep the existing GTA V service, unit, account, data
-and credentials in place. Do not install or start this pilot before separate
-authorization. The live authenticated name lookup and reverse ID lookup on
+**Running since November 21, 2026** as a separate service next to GTA V,
+which keeps its own unit, account, data and credentials. The live authenticated name lookup and reverse ID lookup on
 November 19, 2026 returned **Grand Theft Auto VI, 1867279146**. [Helix Get Games](https://dev.twitch.tv/docs/api/reference/games)
 
 For changes to the existing GTA VI service, see the
@@ -37,11 +36,9 @@ A two-request launch-day sample at **15:27–15:37 Europe/Rome** returned
 closed minute sampled within that window returned zero and no cursor.
 The ten-minute page was incomplete. The sample did not measure how many pages
 remain, full launch volume or the VPS app's rate limit. The collector can
-split windows at its 900-result safety threshold and uses at most 10 logical
-pages per window and 20 per discovery cycle. Those are discovery page limits,
-with snapshot and retry calls additional. At this cadence that is at most
-four discovery pages/minute averaged across a normal cycle, sometimes bursty.
-If the budget is exhausted, the persisted checkpoint can fall behind and
+now uses fixed structural lanes per cycle (see
+[scan progress](#separate-scan-progress-and-coverage)). Those are discovery
+page limits, with snapshot and retry calls additional. If the budget is exhausted, the persisted checkpoint can fall behind and
 subsequent catch-up can grow the queried range. Twitch discovery is ranked by
 views and capped, so absence from the database or a complete cycle does not
 certify full coverage. [Helix Get Clips](https://dev.twitch.tv/docs/api/reference/clips)
@@ -53,28 +50,11 @@ separately. A later observation does not recreate an earlier one.
 
 ## Offline discovery recovery candidate
 
-The offline Helix replay exhausted 20 logical discovery calls in two
-successive cycles. Each cycle logged partial runs at 10, 10 and 0 pages
-and left the checkpoint at 23:11 UTC. The original algorithm spent the
-budget on the wide parent and its left child, then required both children
-to finish before advancing. Each cycle's later end widened the same retry.
-
-The candidate applies to category `1867279146`. It queries in UTC minute
-intervals of at most five minutes, shortens a partial interval and retries
-its first unresolved minute. Completed contiguous intervals advance the
-checkpoint even if the next interval spends the rest of the budget or
-returns an error. After a restart, existing run records supply the retry
-interval, including a failed initial run or a provisional checkpoint from
-the previous collector. A minute that reaches the truncation guard remains
-open. When new coverage reaches the cycle's cutoff, remaining requests
-revisit the existing lookback and overlap for delayed indexing.
-
-The 20-call discovery budget, 900-result guard, 10-page guard, page size,
-300-second cadence and configured 10-minute lookback stay in place. The
-collector runs due snapshots before discovery and between pages. Bounded
-Helix retries and observation requests are outside the discovery budget.
-GTA V keeps its existing discovery path. The candidate uses the existing
-SQLite schema and state. No live recovery evidence is available for it.
+The minute-interval candidate described here was superseded on November 21
+by the structural discovery release `4ab8d05f1ca1`, described under
+[scan progress and coverage](#separate-scan-progress-and-coverage). Its full
+text is preserved in Git (`git show b10cf94:docs/GTA_VI_PILOT.md`).
+[Release evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-structural-discovery-release)
 
 ### GTA VI data impact
 
@@ -107,23 +87,10 @@ label-maturity embargo and the chronological gates.
 
 ### Future rollout decision
 
-The verified source revision is
-`c2e5c21300de1d6d98a89f8b7769fe69bdbd621e`.
-The archive contains 53 files and its SHA-256 is
-`d3e5bcc4506c44de43de737af023de452c3c3b57316a713ebcc9c60f697ff451`.
-To reproduce the archive locally with a fresh output path, run:
-
-```powershell
-$revision = 'c2e5c21300de1d6d98a89f8b7769fe69bdbd621e'
-$archive = "data/viralclip-gta-vi-$revision-rebuild.tar.gz"
-uv run --offline --no-sync python -B scripts/package_release.py $revision --output $archive
-if ($LASTEXITCODE -ne 0) { throw 'Source packaging failed' }
-Get-FileHash -Algorithm SHA256 -LiteralPath $archive
-```
-
-The packager verifies archive members against the Git blobs. Compare the
-full SHA-256 before staging. The archive includes source, tests and
-deployment templates. Apply only the reviewed GTA VI runtime change.
+These steps apply to any GTA VI-only runtime change. Build the reviewed
+revision with `scripts/package_release.py`, which verifies archive members
+against the Git blobs, and compare the full SHA-256 before staging. Apply
+only the reviewed GTA VI runtime change.
 
 1. Obtain specific authorization for a GTA VI-only release and service
    handoff. Inspect the live unit, effective interpreter path, Python
@@ -177,69 +144,10 @@ for any configuration change.
 
 ### 2026-11-21 VPS preflight
 
-Both units were active in the 13:59 UTC sample. GTA V was enabled at
-boot and GTA VI disabled. Both use distinct Python 3.12.3 environments,
-SQLite 3.45.1, project version 0.1.0, HTTPX 0.28.1 and python-dotenv 1.2.4.
-The GTA VI discovery, launcher, database and HTTP modules match the
-release parent. The installed `deployment.py` and `operations.py`
-differ from that parent. The installed deployment helper still exposes
-`_open_read_only(database: Path)` and `_check_schema(reader)`. Both
-databases have migration versions 1 and 2. The candidate requires no
-migration.
-
-**NO-GO for a whole-package replacement.** Proceed to isolated staged
-validation only after approval. The commands that transfer files,
-write to staging and switch or stop/start the service all require
-explicit rollout authorization. The following procedure preserves the
-installed helper modules and dependency versions.
-
-1. Use SCP with the existing identity to a new private staging directory
-   under `/home/ubuntu`. Check the full SHA-256 there against the value
-   above before extracting. Extract only
-   `src/viralclip/collector/service.py` and `src/viralclip/gta_vi.py`.
-   Confirm their SHA-256 values are
-   `46cce79067d4fdfad4c43dc7a4bca2b777645192b3fb927b100d15c9e6aafb36`
-   and `39abcede407ab334b94fa247ee94e076eb33d434c60e0b664b48e6224ea2a9a0`.
-2. Build a root-owned sibling `/opt/viralclip-gta-vi.next` on the same
-   filesystem by copying the current dedicated GTA VI runtime tree,
-   omitting Python bytecode caches. Require the sibling path to be
-   unused. In that copy replace the two corresponding files under
-   `.venv/lib/python3.12/site-packages/viralclip/`. Refresh their two
-   hash and size entries in the installed distribution's `RECORD`
-   with SHA-256 encoded as unpadded URL-safe Base64. Verify all other
-   installed sources and dependencies are unchanged. Confirm the two
-   input hashes again. As `viralclip-gta-vi`, use the staged interpreter
-   with `-IB` to import both modules and check their resolved paths and
-   ID `1867279146`. Run the mocked discovery regression in a disposable
-   test environment. Leave credentials and live DB paths out of testing.
-3. Refresh the read-only baseline and verify disk reserve and access
-   for the service user. Prove `renameat2` with `RENAME_EXCHANGE`
-   works between two disposable directories on the same filesystem.
-   The preflight observed ext4, the libc function, root-owned separate
-   runtime directories and no conflicting systemd stop dependencies.
-   Halt if the rehearsal, path, baseline or scope differs.
-4. Stop with `sudo systemctl stop viralclip-gta-vi.service`. Confirm
-   `MainPID=0`, an empty service cgroup and no process holding the GTA VI
-   SQLite files that still exist. Use one `renameat2` exchange between
-   `/opt/viralclip-gta-vi` and `/opt/viralclip-gta-vi.next`. On exchange
-   failure, confirm the previous runtime remains at the live path and
-   escalate immediately. On success, keep the previous runtime at
-   `.next`, verify the new interpreter paths and module hashes at the
-   live path, then run `sudo systemctl start viralclip-gta-vi.service`.
-   Verify the new writer owns only the original GTA VI DB. Preserve the
-   original systemd unit, environment, authorization and boot state.
-5. Apply the three-cycle checks above with read-only probes of both
-   games. Compare job P95 with the 5s GTA VI preflight baseline and judge
-   it alongside overdue and failed jobs. Compare API error rates against
-   zero observed API errors in the preflight hour. A persistent saturated
-   minute must remain flagged as partial. Live catch-up capacity is
-   unknown until measured.
-6. For an authorized rollback, stop GTA VI, verify writer exit, exchange
-   the same two directories back, validate the original source hashes,
-   and start GTA VI. Verify database identity and continued observations,
-   and compare GTA V with its preflight identity. The exchange leaves
-   state paths alone. Normal SQLite close and restart can flush or
-   recreate sidecars. Preserve the persisted checkpoint and run history.
+The targeted two-file runtime exchange for the minute-interval candidate
+was prepared and executed on November 21. Its full procedure, hashes and
+checks are preserved in Git (`git show b10cf94:docs/GTA_VI_PILOT.md`).
+[Preflight evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-rollout-preflight)
 
 ### Coverage gate after the live Helix diagnostic
 
@@ -323,141 +231,13 @@ The enablement used `systemctl enable` with both collectors running.
 Actual reboot recovery has yet to be tested.
 [Enablement evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-persistent-boot-enablement)
 
-## Windows preparation
+## Initial installation
 
-From the repository root, the optional read-only exact check uses your
-locally configured app credentials and prints only the ID. It neither
-collects nor writes SQLite. A mismatch or failed lookup blocks approval.
-
-```powershell
-$py = '.\.venv\Scripts\python.exe'
-$id = & $py -B -m viralclip.gta_vi resolve
-if ($LASTEXITCODE -ne 0 -or $id -ne '1867279146') { throw 'Helix verification failed or changed' }
-$env:PYTHON_DOTENV_DISABLED = '1'
-& $py -B -m pytest tests/test_gta_vi.py tests/test_collector.py tests/test_operations.py
-if ($LASTEXITCODE -ne 0) { throw 'Pilot tests failed' }
-$release = "data/viralclip-gta-vi-$([guid]::NewGuid().ToString('N')).tar.gz"
-tar.exe --exclude=__pycache__ --exclude='*.pyc' -czf $release pyproject.toml uv.lock .python-version README.md src tests deploy
-if ($LASTEXITCODE -ne 0) { throw 'Archive creation failed' }
-Get-FileHash -Algorithm SHA256 -LiteralPath $release
-```
-
-Review the source-only archive. After approval and checking the SSH host key,
-upload it to a private staging directory. Use the actual OVH login.
-
-```powershell
-$Vps = 'ubuntu@REPLACE_WITH_VPS_ADDRESS'
-ssh $Vps 'umask 077; mkdir -p ~/viralclip-stage; chmod 700 ~/viralclip-stage'
-if ($LASTEXITCODE -ne 0) { throw 'Private VPS staging failed' }
-scp $release "${Vps}:viralclip-stage/gta-vi.tar.gz"
-if ($LASTEXITCODE -ne 0) { throw 'Pilot upload failed' }
-```
-
-## Ubuntu staging, after approval, with the marker absent
-
-```bash
-set -eu
-expected='REPLACE_WITH_WINDOWS_SHA256'
-printf '%s  %s\n' "${expected,,}" "$HOME/viralclip-stage/gta-vi.tar.gz" | sha256sum -c -
-sudo test ! -e /opt/viralclip-gta-vi
-sudo test ! -e /etc/viralclip/gta-vi-authorized
-sudo test ! -e /etc/viralclip/gta-vi.env
-sudo install -d -m 0755 -o "$(id -un)" -g "$(id -gn)" /opt/viralclip-gta-vi
-tar -xzf "$HOME/viralclip-stage/gta-vi.tar.gz" -C /opt/viralclip-gta-vi
-cd /opt/viralclip-gta-vi
-export UV_LINK_MODE=copy
-uv sync --locked --python /usr/bin/python3
-uv run --no-sync pytest tests/test_gta_vi.py tests/test_collector.py tests/test_operations.py
-uv sync --locked --no-editable --no-dev --python /usr/bin/python3
-sudo chown -R root:root /opt/viralclip-gta-vi
-sudo chmod -R a+rX,go-w /opt/viralclip-gta-vi
-sudo useradd --system --user-group --home-dir /var/lib/viralclip-gta-vi --no-create-home --shell /usr/sbin/nologin viralclip-gta-vi
-sudo install -d -o viralclip-gta-vi -g viralclip-gta-vi -m 0700 /var/lib/viralclip-gta-vi
-sudo install -o root -g root -m 0600 deploy/gta-vi.env.example /etc/viralclip/gta-vi.env
-sudoedit /etc/viralclip/gta-vi.env
-pilot=/opt/viralclip-gta-vi/.venv/bin/python
-db=/var/lib/viralclip-gta-vi/gta-vi.sqlite3
-sudo test ! -e "$db"
-sudo test ! -L "$db"
-sudo -u viralclip-gta-vi env PYTHON_DOTENV_DISABLED=1 "$pilot" -B -m viralclip --db "$db" init-db
-sudo install -m 0644 deploy/viralclip-gta-vi.service /etc/systemd/system/viralclip-gta-vi.service
-sudo systemd-analyze verify /etc/systemd/system/viralclip-gta-vi.service
-sudo systemctl daemon-reload
-sudo systemctl show viralclip-gta-vi.service -p ActiveState -p UnitFileState -p MainPID
-```
-
-Enter the dedicated Twitch app credentials through the editor and keep the
-verified ID and other defaults. For first-time staging, expect the new unit
-to be inactive, disabled, `MainPID=0`. If the account, files or state already
-exist, inspect them before proceeding. Check effective GTA V and GTA VI app
-IDs privately. When both use the documented environment files and have no
-overrides, the following verifies they differ without printing their values:
-
-```bash
-sudo "$pilot" -B - <<'PY'
-from dotenv import dotenv_values
-old = dotenv_values("/etc/viralclip/collector.env", interpolate=False).get("TWITCH_CLIENT_ID")
-new = dotenv_values("/etc/viralclip/gta-vi.env", interpolate=False).get("TWITCH_CLIENT_ID")
-if not old or not new or old == new:
-    raise SystemExit("Require distinct nonempty app client IDs")
-print("Dedicated Twitch app check passed")
-PY
-sudo systemd-run --wait --pipe --collect -p User=viralclip-gta-vi \
-    -p EnvironmentFile=/etc/viralclip/gta-vi.env -p Environment=PYTHON_DOTENV_DISABLED=1 \
-    "$pilot" -B -m viralclip.gta_vi preflight
-```
-
-If GTA V has effective credential overrides, stop staging and confirm
-separation using those effective settings without displaying them. The
-transient preflight checks disk paths and schema and issues no HTTP requests.
-
-## Authorized pilot start, acceptance and stop
-
-Immediately before any start, capture GTA V PID, discovery freshness, overdue
-age, P95 by target, recent 429s and failures, plus `df -B1`, `free -m` and CPU
-load. Review any existing cutover degradation and require advancing snapshots
-without a growing backlog. Require free bytes of at least the larger of 20%
-of the actual data filesystem and **2 × (both DB + WAL sizes) + 1 GiB**.
-Plan to revisit disk growth after the first hour and day.
-
-Only with explicit start approval:
-
-```bash
-sudo install -o root -g root -m 0600 /dev/null /etc/viralclip/gta-vi-authorized
-sudo systemctl start viralclip-gta-vi.service
-sudo systemctl show viralclip-collector.service viralclip-gta-vi.service -p MainPID -p ActiveState -p NRestarts
-sudo -u viralclip env PYTHON_DOTENV_DISABLED=1 /opt/viralclip-radar/.venv/bin/python -B -m viralclip --db /var/lib/viralclip-radar/viralclip.sqlite3 health
-sudo -u viralclip-gta-vi env PYTHON_DOTENV_DISABLED=1 "$pilot" -B -m viralclip --db "$db" health
-sudo journalctl -u viralclip-gta-vi.service -n 35 --no-pager
-sudo tail -n 30 "$db.http.jsonl"
-df -h /var/lib/viralclip-gta-vi
-free -m
-```
-
-Repeat after one discovery cycle, at 15, 30 and 60 minutes, then after the
-6h and 24h targets mature. Confirm GTA V's unchanged PID and continuing
-discovery/snapshots. GTA VI should have advancing discovery checkpoints,
-new scheduled snapshots when due, no exhausted/failed jobs, no restarts
-or OOM kills, and no overdue job older than five minutes. Inspect both
-services' 429 and remaining-budget events. Review partial runs against the
-checkpoint. One split or early discovery miss does not require a restart.
-Pause GTA VI if repeated 429s, sustained low remaining budget under 10% of
-the observed app bucket, a GTA V regression, three consecutive discovery cycles
-without checkpoint advance, memory pressure (including swapping), or the disk
-reserve breach is observed. Review the clipping sample and first hour growth
-before widening the lookback or enabling startup. Verify the 6h/24h
-outcomes prospectively. No initial completeness or growth-rate claim is made.
-
-To stop only the pilot:
-
-```bash
-sudo rm -f /etc/viralclip/gta-vi-authorized
-sudo systemctl disable --now viralclip-gta-vi.service
-sudo systemctl show viralclip-gta-vi.service viralclip-collector.service -p MainPID -p ActiveState
-```
-
-Leave its SQLite files and lock in place. Once the pilot and backup plan are
-accepted, enable only `viralclip-gta-vi.service` for startup if authorized.
+The first installation, staging and authorized start were completed on
+November 21, 2026. Those one-time commands are preserved in Git
+(`git show b10cf94:docs/GTA_VI_PILOT.md`). Current health checks use the
+[dual-collector runbook](DUAL_COLLECTOR_OPERATIONS.md).
+[Activation evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-controlled-activation)
 
 ## Backup and monitoring integration
 

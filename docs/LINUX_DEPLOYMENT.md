@@ -30,43 +30,21 @@ bytes, about 101 MiB after roughly 31 hours since the first observation.
 That suggests about 80 MiB/day at the initial volume, with considerable
 variation by game activity. Size for the OS, SQLite/WAL, two temporary
 backup-sized files during a restore drill, and retained backups. A starting
-estimate is 1 vCPU, 2 GiB RAM and 25–50 GiB of local disk. Use 50 GB on OCI
-and consider 4 GiB RAM there for headroom. Re-measure actual growth and
+estimate is 1 vCPU, 2 GiB RAM and 25–50 GiB of local disk. Re-measure actual growth and
 peak memory before changing size, cadence or categories. The collector
 needs only SSH administration and outbound DNS/HTTPS. SQLite, logs and
 health stay local. There is no web server or separate database service.
 
-### Oracle Always Free, ARM64
+### Provider
 
-After provisioning authorization, open **Compute → Instances → Create
-instance** in the tenancy's **home region**. Select an Always Free-eligible
-Ubuntu 24.04 ARM64 image and `VM.Standard.A1.Flex`, initially **1 OCPU and
-4 GB RAM** with an approximately **50 GB** boot volume. Check the Console
-eligibility markers, remaining tenancy allowance and any applicable
-volume, network or backup charges before pressing **Create**. Use an SSH
-key and restrict inbound TCP 22 to the operator's source CIDR. Confirm
-the VM can reach the internet for packages and Twitch via the selected
-networking. Leave public application ports closed.
-
-Oracle's current documentation lists 1,500 A1 OCPU-hours and 9,000
-GB-hours per month, roughly 2 OCPUs and 12 GB continuously, plus 200 GB
-combined boot/block storage and five volume backups in the home region.
-These are tenancy totals. The documentation describes A1 idle
-reclamation using a seven-day assessment if CPU at the 95th percentile,
-network utilization and memory utilization are all below 20%. This
-low-load collector may qualify as idle. Keep an
-independent off-server backup. Free capacity is unconfirmed. If the
-Console reports out of host capacity, try another eligible availability
-domain or wait. Any paid fallback needs separate approval.
-[Oracle Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
-
-### Generic x86-64 VPS fallback
-
-With separate cost approval, select a small Ubuntu 24.04 x86-64 VPS with
-at least the above starting resources and local persistent storage.
-Confirm included disk, egress, backup charges and firewall rules with
-the provider. Use the same SSH and installation procedure. No OCI
-SDK, database or provider-specific agent is required by the collector.
+Production runs on an OVH Ubuntu VPS with 2 vCores, 4 GB RAM and 40 GB of
+disk. Any other small Ubuntu 24.04 VPS with at least the starting resources
+and local persistent storage works with the same SSH and installation
+procedure; a provider change needs separate cost approval. Confirm included
+disk, egress, backup charges and firewall rules with the provider. No
+provider SDK, database or agent is required by the collector. The earlier
+Oracle Always Free notes are preserved in Git
+(`git show b10cf94:docs/LINUX_DEPLOYMENT.md`).
 
 ## Install on an authorized VM, with the service disabled
 

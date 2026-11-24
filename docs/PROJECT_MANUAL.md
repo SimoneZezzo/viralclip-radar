@@ -147,8 +147,10 @@ fixture. Nessun ranking su clip reali è stato ancora registrato.
 | Classifica di un pool comparabile | Disponibile nel replay privato e nella pagina della demo sintetica. |
 | Verifica a 24 ore | `link-outcomes` collega l'esito in `prediction_outcomes`, una sola volta per previsione e senza modificarla. Rimanda gli esiti immaturi e quelli con job a 24 ore ancora pendente. |
 
-**Contratto del registro, approvato il 24 novembre 2026.** La demo salva la
-classifica sintetica in un SQLite separato. Ogni esecuzione del metodo è
+**Contratto del registro, approvato il 24 novembre 2026.** La demo costruisce
+un database del collector sintetico, etichettato
+`SYNTHETIC / NOT REAL TWITCH DATA`, e ne salva la classifica con
+`viralclip.predictions` in un SQLite separato. Ogni esecuzione del metodo è
 sigillata con la dimensione del pool dopo aver inserito le previsioni. La
 pagina legge il registro in sola lettura. Il collegamento degli esiti a
 24 ore è un passaggio successivo.

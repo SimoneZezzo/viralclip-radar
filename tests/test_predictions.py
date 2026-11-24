@@ -108,6 +108,8 @@ def test_rank_rejects_unsafe_inputs(source, tmp_path):
     registry = tmp_path / "predictions.sqlite3"
     with pytest.raises(ValueError, match="separate"):
         rank_pool(source.path, source.path, "42", DAY_START, 60, scored_at=NOW + DAY_SPAN)
+    with pytest.raises(ValueError, match="own score version"):
+        rank_pool(source.path, registry, "42", DAY_START, 60, scorer=lambda row: 1)
     with pytest.raises(ValueError, match="Cutoff"):
         rank_pool(source.path, registry, "42", DAY_START, 45, scored_at=NOW + DAY_SPAN)
     with pytest.raises(ValueError, match="midnight"):

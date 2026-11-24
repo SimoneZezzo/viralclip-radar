@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
+from collections.abc import Callable
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS ranking_runs (
     scored_at TEXT NOT NULL,
     source_watermark TEXT NOT NULL,
     score_version TEXT NOT NULL,
-    model_status TEXT NOT NULL CHECK (model_status IN ('trained', 'not_trained_yet')),
+    model_status TEXT NOT NULL CHECK (model_status IN ('trained', 'not_trained_yet', 'simulated')),
     pool_size INTEGER NOT NULL CHECK (pool_size > 0),
     CHECK (scored_at >= source_watermark)
 );
@@ -154,8 +155,18 @@ def rank_pool(
     *,
     watermark: datetime | None = None,
     scored_at: datetime | None = None,
+    scorer: Callable[[dict], float | None] | None = None,
+    score_version: str = BASELINE_VERSION,
+    model_status: str = NOT_TRAINED,
+    run_id: str | None = None,
 ) -> dict:
-    """Score one game x UTC day x cutoff pool with the declared baseline and seal the run."""
+    """Score one game x UTC day x cutoff pool and seal the run.
+
+    Without a scorer the declared `latest_views` baseline is used. A scorer receives the
+    cutoff feature row and returns an output, or None when the clip lacks sufficient data.
+    """
+    if (scorer is None) != (score_version == BASELINE_VERSION and model_status == NOT_TRAINED):
+        raise ValueError("A custom scorer needs its own score version and model status")
     if cutoff not in CUTOFFS:
         raise ValueError(f"Cutoff must be one of {CUTOFFS}")
     day = _pool_day(day)
@@ -173,12 +184,18 @@ def rank_pool(
     ]
     if not rows:
         raise ValueError("No clip in this pool was observed by its cutoff")
+    score = scorer or (lambda row: row["latest_views"])
+    outputs = {row["clip_id"]: score(row) for row in rows}
     rows.sort(
-        key=lambda row: (row["latest_views"] is None, -(row["latest_views"] or 0), row["clip_id"])
+        key=lambda row: (
+            outputs[row["clip_id"]] is None,
+            -(outputs[row["clip_id"]] or 0),
+            row["clip_id"],
+        )
     )
-    scores = relative_scores([row["latest_views"] for row in rows])
+    scores = relative_scores([outputs[row["clip_id"]] for row in rows])
     stamp = to_utc_iso(scored_at)
-    run_id = f"{game_id}:{day.date().isoformat()}:{cutoff}m:{stamp}"
+    run_id = run_id or f"{game_id}:{day.date().isoformat()}:{cutoff}m:{stamp}"
     with closing(_connect_registry(registry, collector)) as db, db:
         db.execute("BEGIN IMMEDIATE")
         db.executemany(
@@ -220,15 +237,15 @@ def rank_pool(
                 cutoff,
                 stamp,
                 to_utc_iso(source.watermark),
-                BASELINE_VERSION,
-                NOT_TRAINED,
+                score_version,
+                model_status,
                 len(rows),
             ),
         )
     return {
         "run_id": run_id,
-        "score_version": BASELINE_VERSION,
-        "model_status": NOT_TRAINED,
+        "score_version": score_version,
+        "model_status": model_status,
         "pool_size": len(rows),
         "scored": sum(score is not None for score in scores),
         "source_watermark": to_utc_iso(source.watermark),
@@ -316,15 +333,43 @@ def _may_still_settle(job: sqlite3.Row | None, watermark: datetime) -> bool:
     return completed is not None and parse_utc(completed) > watermark
 
 
+def _read_registry(registry: Path) -> sqlite3.Connection:
+    db = sqlite3.connect(f"{registry.resolve().as_uri()}?mode=ro", uri=True)
+    db.row_factory = sqlite3.Row
+    db.execute("PRAGMA query_only=ON")
+    if db.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
+        db.close()
+        raise ValueError("Not a prediction registry")
+    return db
+
+
+def read_run(registry: Path, run_id: str) -> dict | None:
+    """Return one sealed run with every prediction, scored first by rank, read-only."""
+    with closing(_read_registry(registry)) as db:
+        run = db.execute("SELECT * FROM ranking_runs WHERE run_id=?", (run_id,)).fetchone()
+        if run is None:
+            return None
+        rows = db.execute(
+            """
+            SELECT prediction_id, clip_id, prediction_at, scored_at, feature_status, score, rank,
+                   latest_observed_at, observation_ids
+            FROM predictions WHERE run_id=? ORDER BY rank IS NULL, rank, clip_id
+            """,
+            (run_id,),
+        ).fetchall()
+    return {
+        "run": dict(run),
+        "predictions": [
+            dict(row) | {"observation_ids": json.loads(row["observation_ids"])} for row in rows
+        ],
+    }
+
+
 def shortlist(registry: Path, game_id: str, pool_day: str, cutoff: int, k: int = 10) -> dict:
     """Return the top-K records of the latest sealed run for one pool, read-only."""
     if k <= 0:
         raise ValueError("K must be positive")
-    with closing(sqlite3.connect(f"{registry.resolve().as_uri()}?mode=ro", uri=True)) as db:
-        db.row_factory = sqlite3.Row
-        db.execute("PRAGMA query_only=ON")
-        if db.execute("PRAGMA application_id").fetchone()[0] != APPLICATION_ID:
-            raise ValueError("Not a prediction registry")
+    with closing(_read_registry(registry)) as db:
         run = db.execute(
             """
             SELECT * FROM ranking_runs WHERE game_id=? AND pool_day=? AND cutoff_minutes=?
