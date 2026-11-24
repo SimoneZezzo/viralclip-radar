@@ -147,8 +147,17 @@ first signal and the candidate shortlist.
    [Operating plan](docs/ACTION_PLAN.md#5-piano-operativo) ·
    [reviewer–reviewer exchange](docs/DEMO_REVIEW.md)
 
+## Work in progress
+
+Agents declare multi-file work here before starting and remove it when done,
+per the [collaboration rules](docs/REVIEW_INTEGRATION.md#collaborazione-fra-reviewer-e-reviewer).
+
+- None.
+
 ## Repository and workflow
 
+Since November 24, reviewer and reviewer collaborate: both edit and commit on the
+owner's request and review each other's changes in sensitive areas.
 The direct reviewer-to-reviewer round trip passed the synthetic cutoff probe on
 November 24 using the existing a subscription login and network access.
 See the [review workflow](docs/REVIEW_INTEGRATION.md)
