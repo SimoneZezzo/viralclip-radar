@@ -12,7 +12,7 @@ jobs:
   verify:
     name: Verify (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -28,5 +28,9 @@ jobs:
           enable-cache: false
       - name: Install locked dependencies
         run: uv sync --locked
+      # The runner images ship Node.js and Google Chrome, which the Web and Web e2e
+      # checks need; no browser download is required.
+      - name: Install locked web dependencies
+        run: npm --prefix web ci
       - name: Verify offline
         run: uv run --offline --no-sync python -B scripts/verify_offline.py --strict

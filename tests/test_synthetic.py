@@ -61,6 +61,11 @@ def test_dry_run_exercises_benchmark_registry_and_outcomes(workspace):
     assert set(summary["test_top50_overlap_macro_mean"]) >= {"latest_views", "growth_rate"}
     runs = summary["registry_runs"]
     assert len(runs) == 2 and all(run["model_status"] == "not_trained_yet" for run in runs)
+    # A daily replay scores after the last cutoff, so early clips may already be mature.
+    assert summary["registry_mode"] == "daily replay"
+    assert all(
+        0 <= run["ranked_with_24h_outcome_already_observed"] <= run["pool_size"] for run in runs
+    )
     outcomes = summary["outcomes"]
     assert outcomes["by_status"]["valid"] > 0
     assert outcomes["linked"] == sum(
@@ -71,6 +76,14 @@ def test_dry_run_exercises_benchmark_registry_and_outcomes(workspace):
     assert (workspace / "data" / "run" / "benchmark" / "manifest.json").is_file()
     with pytest.raises(ValueError, match="new directory"):
         dry_run(workspace / "data" / "run", clips_per_day=30)
+
+
+def test_dry_run_reports_insufficient_data_instead_of_crashing(workspace, capsys):
+    code = main(["synthetic-dry-run", "--output", "data/tiny", "--clips-per-day", "1"])
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "Benchmark: INSUFFICIENT DATA" in output
+    assert "Test top-50 overlap (views_24h, 60m): not scored" in output
 
 
 def test_dry_run_requires_a_git_ignored_output(workspace):

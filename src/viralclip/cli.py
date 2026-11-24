@@ -43,6 +43,12 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     commands.add_parser("health", help="inspect collector health using read-only SQLite access")
     demo = commands.add_parser("demo", help="serve the synthetic portfolio demo on this computer")
     demo.add_argument("--port", type=int, default=8765, help="local HTTP port (default: 8765)")
+    demo.add_argument(
+        "--registry",
+        type=Path,
+        default=Path("data/demo/registry-v3.sqlite3"),
+        help="synthetic ranking registry path (default: data/demo/registry-v3.sqlite3)",
+    )
     # L'estrazione sceglie le clip create dall'inizio incluso alla fine esclusa, in UTC.
     dataset = commands.add_parser("dataset", help="extract point-in-time features and 24h labels")
     dataset.add_argument("--start", required=True, help="inclusive UTC clip creation timestamp")
@@ -131,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         try:
-            run_demo(args.port)
+            run_demo(args.port, args.registry)
         except (ValueError, OSError, sqlite3.Error) as exc:
             print(f"Demo failed: {exc}", file=sys.stderr)
             return 1

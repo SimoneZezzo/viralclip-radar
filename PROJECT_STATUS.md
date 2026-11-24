@@ -170,8 +170,10 @@ November 24. The private GitHub repository was
 deleted on November 24 after the initial import passed CI on Windows and
 Ubuntu; future publication will use a reviewed release copy.
 [Import evidence](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-and-verification)
-On November 24, strict offline verification passed 7/7 checks and 257 tests on
-Windows. Workflow phases P0–P2 are GO locally.
+On November 24, strict offline verification passed 9/9 checks on Windows:
+pytest, Ruff lint and format, Git, Bash, PowerShell, Web (ESLint, TypeScript,
+Vitest, Vite build), Web e2e (Playwright) and packaging. Workflow phases P0–P2
+are GO locally.
 [P0–P2 evidence](docs/PROJECT_HISTORY.md#2026-11-19-p2-context-and-token-efficiency)
 
 ## Read as needed

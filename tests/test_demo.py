@@ -1,5 +1,6 @@
 import sqlite3
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -118,6 +119,10 @@ def test_demo_cli_does_not_load_collector_settings(monkeypatch):
 
     calls = []
     monkeypatch.setattr("viralclip.cli.load_settings", unexpected_settings)
-    monkeypatch.setattr("viralclip.demo.run_demo", calls.append)
+    monkeypatch.setattr("viralclip.demo.run_demo", lambda *args: calls.append(args))
     assert main(["demo", "--port", "8766"]) == 0
-    assert calls == [8766]
+    assert main(["demo", "--port", "8767", "--registry", "data/e2e/registry.sqlite3"]) == 0
+    assert calls == [
+        (8766, Path("data/demo/registry-v3.sqlite3")),
+        (8767, Path("data/e2e/registry.sqlite3")),
+    ]

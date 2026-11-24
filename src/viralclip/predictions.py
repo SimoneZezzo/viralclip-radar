@@ -18,6 +18,8 @@ BASELINE_VERSION = "baseline:latest_views:v1"
 NOT_TRAINED = "not_trained_yet"
 POOL_STATUSES = ("eligible", "missing_observations")
 PENDING_JOB_STATUSES = ("pending", "running")
+# Database.due_jobs retries a failed job until it has made this many attempts.
+MAX_JOB_ATTEMPTS = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS ranking_runs (
@@ -284,6 +286,14 @@ def link_outcomes(
         if linked_at < source.watermark:
             raise ValueError("Link time precedes the source watermark")
         clips = {clip.clip_id: clip for clip in source.clips}
+        attempts = _job_attempts(
+            collector,
+            [
+                job["job_id"]
+                for clip_id, job in source.jobs.items()
+                if job is not None and job["status"] == "failed"
+            ],
+        )
         for prediction_id, clip_id, *_ in rows:
             clip = clips.get(clip_id)
             if clip is None:
@@ -293,7 +303,7 @@ def link_outcomes(
             result = outcome(clip, job, source.watermark)
             status = result["outcome_status"]
             if status == "immature" or (
-                status == "missing" and _may_still_settle(job, source.watermark)
+                status == "missing" and _may_still_settle(job, source.watermark, attempts)
             ):
                 counts["deferred"] = counts.get("deferred", 0) + 1
                 continue
@@ -324,10 +334,30 @@ def link_outcomes(
     return {"linked": len(records), "by_status": dict(sorted(counts.items()))}
 
 
-def _may_still_settle(job: sqlite3.Row | None, watermark: datetime) -> bool:
+def _job_attempts(collector: Path, job_ids: list[int]) -> dict[int, int]:
+    """Read job attempt counts from the collector database without writing to it."""
+    if not job_ids:
+        return {}
+    uri = collector.resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True, timeout=2)) as db:
+        db.execute("PRAGMA query_only = ON")
+        placeholders = ",".join("?" for _ in job_ids)
+        return dict(
+            db.execute(
+                f"SELECT job_id, attempts FROM jobs WHERE job_id IN ({placeholders})", job_ids
+            ).fetchall()
+        )
+
+
+def _may_still_settle(
+    job: sqlite3.Row | None, watermark: datetime, attempts: dict[int, int]
+) -> bool:
+    """True while the collector could still change the job, as Database.due_jobs would."""
     if job is None:
         return False
     if job["status"] in PENDING_JOB_STATUSES:
+        return True
+    if job["status"] == "failed" and attempts.get(job["job_id"], 0) < MAX_JOB_ATTEMPTS:
         return True
     completed = job["completed_at"]
     return completed is not None and parse_utc(completed) > watermark

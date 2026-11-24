@@ -161,6 +161,27 @@ def test_outcomes_link_once_after_maturity_without_changing_predictions(source, 
         db.execute("UPDATE prediction_outcomes SET views_24h = 1")
 
 
+def test_outcomes_wait_for_failed_jobs_the_collector_will_retry(source, tmp_path):
+    registry = tmp_path / "predictions.sqlite3"
+    rank_pool(source.path, registry, "42", DAY_START, 60, scored_at=NOW + 2 * 60 * MINUTE)
+    (job,) = source.connection.execute(
+        "SELECT job_id FROM jobs WHERE clip_id = 'a' AND target_age_seconds = 86400"
+    ).fetchone()
+    # One failed attempt: Database.due_jobs will retry it, so the outcome is not final.
+    source.start_jobs([job])
+    source.finish_jobs([job], "failed", NOW + timedelta(seconds=86410), "HTTP 503")
+    seen(source, "late", timedelta(hours=24, minutes=10), 6000)
+    first = link_outcomes(source.path, registry, linked_at=NOW + DAY_SPAN)
+    assert first == {"linked": 0, "by_status": {"deferred": 2}}
+
+    # After the last allowed attempt fails, the job is exhausted and the outcome is missing.
+    for _ in range(2):
+        source.start_jobs([job])
+        source.finish_jobs([job], "failed", NOW + timedelta(seconds=86420), "HTTP 503")
+    exhausted = link_outcomes(source.path, registry, linked_at=NOW + DAY_SPAN)
+    assert exhausted == {"linked": 1, "by_status": {"deferred": 1, "missing": 1}}
+
+
 def test_registry_cli_ranks_and_prints_the_shortlist(source, tmp_path, monkeypatch, capsys):
     registry = tmp_path / "predictions.sqlite3"
     monkeypatch.setattr(cli, "ignored_registry", lambda path: path)

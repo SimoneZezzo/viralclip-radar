@@ -16,7 +16,9 @@ npm --prefix web run build
 uv run --offline --no-sync viralclip demo
 ```
 
-Open `http://127.0.0.1:8765` and stop the server with Ctrl+C. For front-end
+Open `http://127.0.0.1:8765` and stop the server with Ctrl+C. The synthetic
+registry defaults to `data/demo/registry-v3.sqlite3`; `--registry PATH`
+selects another one, as the end-to-end tests do with a new path per run. For front-end
 work, keep the demo running and use `npm --prefix web run dev`, which proxies
 `/api` to it. `npm ci` needs network access once; builds and tests then run
 offline. FastAPI and Uvicorn are in the uv `dev` group, so collector installs
@@ -245,8 +247,10 @@ writing commands read the collector database read-only.
 `uv run --offline --no-sync viralclip synthetic-dry-run --output data/dry-run`
 builds a collector database of `SYNTHETIC / NOT REAL TWITCH DATA` clips on the
 preliminary 2/2/2 calendar, then runs the point-in-time export, benchmark
-protocol v1, the live ranking registry at the 60-minute cutoff and 24-hour
-outcome linking. It writes `summary.json` in a new Git-ignored directory and
+protocol v1, a daily replay of the live ranking registry at the 60-minute
+cutoff and 24-hour outcome linking. The replay scores each test day once,
+after its last cutoff, so the summary counts ranked clips that already had a
+24-hour observation; it checks the cutoff of features, not live timeliness. It writes `summary.json` in a new Git-ignored directory and
 needs no credentials or real data. The numbers describe the generator, not
 Twitch.
 

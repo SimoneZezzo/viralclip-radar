@@ -210,11 +210,11 @@ def create_app(registry: Path, assets: Path = ASSETS) -> FastAPI:
     return app
 
 
-def run_demo(port: int) -> None:
+def run_demo(port: int, registry: Path = REGISTRY) -> None:
     import uvicorn
 
-    prepare_registry(REGISTRY)
+    prepare_registry(registry)
     if not (ASSETS / "index.html").is_file():
         print("Front end not built: run `npm --prefix web ci` and `npm --prefix web run build`.")
     print(f"Local demo: http://127.0.0.1:{port}", flush=True)
-    uvicorn.run(create_app(REGISTRY), host="127.0.0.1", port=port, log_level="warning")
+    uvicorn.run(create_app(registry), host="127.0.0.1", port=port, log_level="warning")

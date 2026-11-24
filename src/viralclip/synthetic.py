@@ -7,6 +7,8 @@ registry run on it exactly as they would on a sealed private copy.
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from math import exp, log
 from pathlib import Path
@@ -16,7 +18,7 @@ from viralclip.benchmark import run_benchmark
 from viralclip.collector.service import GTA_VI_GAME_ID
 from viralclip.dataset import Selection, extract, ignored_output, write_json
 from viralclip.evaluation import MATURITY
-from viralclip.predictions import link_outcomes, rank_pool
+from viralclip.predictions import link_outcomes, rank_pool, read_run
 from viralclip.storage.database import TARGET_AGES_SECONDS, Database, to_utc_iso
 
 LABEL = "SYNTHETIC / NOT REAL TWITCH DATA"
@@ -140,20 +142,24 @@ def dry_run(
     registry = output / "registry.sqlite3"
     runs = []
     for day in CALENDAR["test"]:
-        # Rank as the live service would: after the day's last 60-minute cutoff and
-        # long before any 24-hour outcome exists.
+        # Daily replay: one run per pool, scored just after the day's last 60-minute
+        # cutoff. Features respect each clip's cutoff, but clips created early in the day
+        # may already have a 24-hour observation by then, so this is not a test of live
+        # timeliness; the count below makes that explicit.
         cutoff_watermark = day + DAY + timedelta(minutes=61)
-        runs.append(
-            rank_pool(
-                collector,
-                registry,
-                game_id,
-                day,
-                60,
-                watermark=cutoff_watermark,
-                scored_at=cutoff_watermark,
-            )
+        run = rank_pool(
+            collector,
+            registry,
+            game_id,
+            day,
+            60,
+            watermark=cutoff_watermark,
+            scored_at=cutoff_watermark,
         )
+        run["ranked_with_24h_outcome_already_observed"] = _outcomes_before(
+            collector, registry, run["run_id"], cutoff_watermark
+        )
+        runs.append(run)
     outcomes = link_outcomes(collector, registry, watermark=watermark, linked_at=watermark)
     summary = {
         "label": LABEL,
@@ -164,12 +170,8 @@ def dry_run(
         "benchmark_status": report["status"],
         "benchmark_reasons": report["reasons"],
         # Primary endpoint shape: T1 top-50 overlap at 60 minutes on the test days.
-        "test_top50_overlap_macro_mean": {
-            method: values["macro_mean"]
-            for method, values in report["by_cutoff_minutes"][60]["metrics"]["test"]["views_24h"][
-                50
-            ]["overlap"]["methods"].items()
-        },
+        "test_top50_overlap_macro_mean": _test_overlap(report),
+        "registry_mode": "daily replay",
         "registry_runs": runs,
         "outcomes": outcomes,
     }
@@ -177,19 +179,47 @@ def dry_run(
     return summary
 
 
+def _test_overlap(report: dict) -> dict[str, float | None]:
+    """Test-day top-50 overlap per method, or {} when the benchmark scored no test day."""
+    metrics = report.get("by_cutoff_minutes", {}).get(60, {}).get("metrics", {})
+    overlap = metrics.get("test", {}).get("views_24h", {}).get(50, {}).get("overlap", {})
+    return {method: values["macro_mean"] for method, values in overlap.get("methods", {}).items()}
+
+
+def _outcomes_before(collector: Path, registry: Path, run_id: str, scored_at: datetime) -> int:
+    """Count ranked clips whose 24-hour job had already completed when the run was scored."""
+    clips = [row["clip_id"] for row in read_run(registry, run_id)["predictions"]]
+    uri = collector.resolve().as_uri() + "?mode=ro"
+    with closing(sqlite3.connect(uri, uri=True)) as db:
+        db.execute("PRAGMA query_only = ON")
+        placeholders = ",".join("?" for _ in clips)
+        return db.execute(
+            f"""
+            SELECT count(*) FROM jobs
+            WHERE target_age_seconds = 86400 AND status = 'completed'
+              AND completed_at <= ? AND clip_id IN ({placeholders})
+            """,
+            [to_utc_iso(scored_at), *clips],
+        ).fetchone()[0]
+
+
 def summary_lines(summary: dict) -> list[str]:
+    overlap = summary["test_top50_overlap_macro_mean"]
     lines = [
         f"{summary['label']}: seed {summary['seed']}, {summary['clips_per_day']} clips per day",
         f"Benchmark: {summary['benchmark_status']}",
         *summary["benchmark_reasons"],
         "Test top-50 overlap (views_24h, 60m): "
-        + ", ".join(
-            f"{method} {value:.3f}"
-            for method, value in sorted(summary["test_top50_overlap_macro_mean"].items())
+        + (
+            ", ".join(f"{method} {value:.3f}" for method, value in sorted(overlap.items()))
+            if overlap
+            else "not scored"
         ),
     ]
     lines += [
-        f"Registry {run['run_id']}: {run['scored']}/{run['pool_size']} scored"
+        f"Registry {run['run_id']} ({summary['registry_mode']}): "
+        f"{run['scored']}/{run['pool_size']} scored, "
+        f"{run['ranked_with_24h_outcome_already_observed']} already had a 24h observation"
         for run in summary["registry_runs"]
     ]
     lines.append(

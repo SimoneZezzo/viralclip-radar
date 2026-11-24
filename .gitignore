@@ -64,3 +64,4 @@ restore-drills/
 node_modules/
 web/test-results/
 web/playwright-report/
+web/.e2e-registry/

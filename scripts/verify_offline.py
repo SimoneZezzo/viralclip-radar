@@ -274,6 +274,12 @@ def web_ready() -> tuple[str, str] | None:
     return None
 
 
+def not_run(output: str) -> int:
+    """Count tests a Vitest or Playwright summary reports as skipped or todo."""
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", output)
+    return sum(int(count) for count in re.findall(r"(\d+) (?:skipped|todo)\b", plain))
+
+
 def web_check(env: dict[str, str]) -> tuple[str, str]:
     if (blocked := web_ready()) is not None:
         return blocked
@@ -288,6 +294,9 @@ def web_check(env: dict[str, str]) -> tuple[str, str]:
         if result.returncode:
             return FAIL, f"{name}: exit {result.returncode}\n{details(result)}"
         if name == "Vitest":
+            # Strict mode treats skipped tests as SKIP, as the pytest check does.
+            if skipped := not_run(result.stdout):
+                return SKIP, f"Vitest skipped or left {skipped} tests as todo"
             plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
             match = re.search(r"Tests\s+(\d+) passed", plain)
             tests = f", {match.group(1)} unit tests" if match else ""
@@ -305,6 +314,8 @@ def web_e2e_check(env: dict[str, str]) -> tuple[str, str]:
         return SKIP, "Google Chrome unavailable for Playwright"
     if result.returncode:
         return FAIL, f"exit {result.returncode}\n{details(result)}"
+    if skipped := not_run(output):
+        return SKIP, f"Playwright skipped {skipped} tests"
     match = re.search(r"(\d+) passed", output)
     return PASS, f"{match.group(1) if match else 'All'} Playwright tests against the built demo"
 
