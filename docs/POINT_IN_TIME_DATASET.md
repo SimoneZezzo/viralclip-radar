@@ -52,12 +52,14 @@ The output directory must be new and ignored by Git. Use the local
   impute missing observations or filter the modeled rows.
 
 The extractor replays **measurement time**. Schema v2 has no independent
-snapshot commit timestamp or metadata history. For exact reruns, retain a
-verified local source backup, the selection, and the extraction version.
-The source high-water markers identify the read used for each run. Discovery
-counts describe the observed population. Late discovery, unreturned clips and
-unavailable outcomes can affect selection. Choose a single cutoff per experiment
-and keep all rows from the same clip together in any chronological split.
+snapshot commit timestamp or metadata history. Under the current no-backup
+policy, record selection, watermark, high-water markers, extraction version
+and artifact hashes for reproducibility while the private data is available.
+Losing the source and derived artifacts can make exact reruns impossible.
+Discovery counts describe the observed population. Late discovery,
+unreturned clips and unavailable outcomes can affect selection. Choose a
+single cutoff per experiment and keep all rows from the same clip together
+in any chronological split.
 See the [chronological evaluation guide](CHRONOLOGICAL_EVALUATION.md) for the
 baseline harness and scoring gates.
 

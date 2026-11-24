@@ -1,6 +1,46 @@
 # Milestone 1 operations rollout for GTA V and GTA VI
 
-**CONDITIONAL GO for an operations-only rollout.** In the operator's 2026-11-19 samples, both collectors advanced and both databases passed integrity and category checks. The current VPS state and installed revision are **UNKNOWN**. Production acceptance depends on the gates below and separate authorization for phases 1–8. The rollback in phase 9 is for this first installation. Keep a single Linux shell for the authorized phases and record the outputs privately.
+**Current status.** M1-02 is cancelled. The operator waived the unmet
+original off-VPS requirement of M1-01, which remains **PARTIAL**, and
+accepted permanent dataset loss. The backup and deployment phases below
+record the original rollout. The read-only inventory remains applicable.
+
+## Current collection and monitoring plan
+
+Keep one collector process and one SQLite writer per game, each with its
+own systemd account, database and WAL. The systemd collectors are installed.
+The repository health CLI reads discovery, job and observation counters.
+The project monitor units are templates. Their existing implementation
+expects backup markers, so it would raise backup incidents under the
+current policy. Start with bounded read-only checks through the existing
+SSH path and a daily disk sample. A local-only check every five minutes
+is proposed and needs separate approval.
+Use lightweight SQL for the frequent check and reserve full coverage
+scans for occasional audits. Record severity transitions in the journal.
+The journal is unavailable if the entire VPS is lost.
+
+| Signal | Warning | Critical |
+| --- | --- | --- |
+| Service and identity | Unplanned restart with service recovered | Inactive service, PID/DB alias, unreadable DB or wrong category |
+| Complete discovery or checkpoint | More than 10 minutes old, or unresolved flagged windows | More than 30 minutes old or a stalled checkpoint |
+| Latest observation | More than 10 minutes old while work is due | More than 30 minutes old while work is due |
+| Scheduled jobs | Oldest overdue above 5 minutes, failures awaiting retry, or P95 lateness above 5 minutes | Oldest overdue above 15 minutes or exhausted retries |
+| Disk and SQLite reserve | Under 20% free or projected below the critical reserve within 14 days | Below the larger of 10% of capacity or 1 GiB plus twice the seven-day peak of combined WAL usage, or projected to reach it within 3 days |
+
+For the structural GTA VI runtime, evaluate live discovery freshness
+using the recent scan watermark, persisted cycle outcomes and actual
+new clips. Evaluate historical work with its own contiguous attempt
+watermark and unresolved intervals. The frozen legacy checkpoint and
+an exhausted API cursor cannot establish current failure or complete
+coverage on their own. GTA V continues to use its legacy checkpoint
+and overlapping search windows.
+
+Track both DBs and their WAL/SHM files, free bytes and inodes, and daily UTC
+growth. Use daily samples rather than a single checkpoint jump for the
+forecast. Count late, unavailable and missed observations separately.
+Correlate discovery flags, errors and HTTP 429s when aggregate telemetry
+is available. Escalate a critical finding to the operator. Remediation,
+restart and deletion are separate choices.
 
 The offline replay reproduced GTA VI's stalled checkpoint and partial-run
 pattern. The local candidate preserves contiguous progress and the request
@@ -135,7 +175,13 @@ environment, invoke Restic or change collector state.
 
 ## 1. LINUX VPS — authorized change, make online recovery copies
 
-Run after approval. Existing applications provide `storage.backup` for a SQLite online copy and temporary restore test. Both copies use a new isolated directory with a writable mount only for the output. A standalone candidate is copied to the operator's private staging directory for off-VPS verification. Allow a few extra database-sized files plus the normal backup staging reserve.
+Run after approval when a fresh pair is required. Existing applications
+provide `storage.backup` for a SQLite online copy and temporary restore test.
+Both copies use a new isolated directory with a writable mount only for the
+output. A standalone candidate is copied to the operator's private staging
+directory. Allow a few extra database-sized files plus the normal backup
+staging reserve. Check the existing pair with the interim retention procedure
+before considering a replacement.
 
 ```bash
 set -euo pipefail
@@ -226,7 +272,79 @@ basename "$anchor"
 
 If either existing module, path, mount, or check fails, stop this phase. The live database file and its sidecars stay in place. The copied DB is a consistent point in time and the latest observation in its manifest is its recovery watermark.
 
+### M1-01 interim VPS retention and Windows retirement
+
+On 2026-11-21 the operator retired the Windows VHDX and selected interim
+retention on the Linux VPS. Both closed online anchors passed hash, category,
+manifest and SQLite validation in staging on 2026-11-20. The isolated Windows
+restore trials also passed. M1-01 remains **PARTIAL**. Retention on the VPS
+shares the live databases' exposure to complete host loss. A redesigned
+off-VPS destination and independent verification are deferred, and the
+original rollout acceptance gates remain open.
+[Dated retirement evidence](PROJECT_HISTORY.md#2026-11-21-m1-01-windows-vhdx-retirement-inventory).
+
+On 2026-11-21 the installed verifiers matched the reviewed `f952a09` sources.
+The replay confirmed that `--expected-game-id` caused exit `2`. The legacy
+CLI verified both v1 manifests using its two positional arguments, with
+category verified directly in SQLite. Both anchors and manifests were
+published and independently verified at
+`/home/ubuntu/viralclip-recovery-anchors/anchor-20261120T223940Z.kprYXW/`.
+Both staging originals remain. The local cleanup audit passed and both
+collectors kept the same PIDs. A second read-only check matched the exact
+hashes of both stable databases and manifests before the operator authorized
+VHDX removal. The Windows image and its empty directories were removed on
+2026-11-21, recovering 4,299,161,600 bytes on `C:`. The later cancellation
+of M1-02 supersedes the proposed automated off-VPS follow-up.
+[Retention evidence](PROJECT_HISTORY.md#2026-11-21-m1-01-stable-vps-anchor-retention)
+· [Removal evidence](PROJECT_HISTORY.md#2026-11-21-m1-01-windows-vhdx-removed).
+
+1. In an authorized SSH session inspect
+   `~/viralclip-stage/anchor-20261120T223940Z.kprYXW/` as the operator. Check
+   that each DB and its `manifest.json` are regular files on canonical paths,
+   that the DBs have no SQLite sidecars, and that ownership and modes match
+   the private staging policy (`0700` directories and `0600` files). Compare
+   each database SHA-256 with the independently recorded digest below. Use the
+   reviewed per-game `viralclip.deployment verify` with `-B` and
+   `PYTHON_DOTENV_DISABLED=1` against these closed files. First identify the
+   installed interpreter and verifier source, and check `verify --help` for
+   `--expected-game-id`. If diagnosing a failed invocation, preserve its
+   exit code and diagnostic output without exposing credentials or data.
+   Supply `32982` for
+   `gta-v/viralclip.sqlite3` and `1867279146` for `gta-vi/gta-vi.sqlite3`.
+   When the installed CLI lacks the option, verify identity independently
+   with SQLite `mode=ro` and `query_only` using the checkout's category checks,
+   and use the installed verifier for manifest, integrity, foreign keys and
+   job checks. Run both games independently and preserve each aggregate
+   verdict, including when one game fails. Verify serially to limit I/O on
+   the shared host. Require both games to pass before writing to the VPS.
+2. Resolve the staging path and use `findmnt -T`, `df -P -B1` and `df -Pi`
+   to check the mount, available bytes and inodes. Check applicable systemd
+   and user timers, cron and tmpfiles rules for cleanup of the anchor,
+   staging directory or a parent. Confirm externally managed retention with
+   the operator. Treat unverified policies as **UNKNOWN** and temporary
+   staging as insufficient evidence of durable retention.
+3. The operator authorized copying this pair, after passing preflight, to
+   `~/viralclip-recovery-anchors/anchor-20261120T223940Z.kprYXW/`. Confirm a
+   persistent filesystem outside collector working paths and staging cleanup,
+   with space for the full copy and reserve. Copy into a private directory
+   and publish without replacing any existing destination. If the destination
+   already exists, inspect its contents in place. Recheck both hashes,
+   manifests, category identities and SQLite checks at the final path. Keep
+   the staging originals and check both collectors are still active.
+4. Windows disposal is complete. After explicit approval, the local check
+   revalidated the exact file identity and detached state before deletion.
+   Only the approved image and its two empty directories were removed. The
+   final check confirmed their absence and measured the recovered space.
+
+| Anchor | Category | Expected SHA-256 supplied by the operator |
+| --- | --- | --- |
+| GTA V | `32982` | `c1f37dfa0c83de5b28ca85ad838f5463c90f48242981fc4c893acfee84a50ba0` |
+| GTA VI | `1867279146` | `48268202a5e330073399228fe5d1274240d9f2c571f4dff1b10dca7e8adfb7bd` |
+
 ## 2. WINDOWS POWERSHELL — authorized transfer, verify both anchors and package the release
+
+The transfer below is on hold pending approval of a replacement off-VPS
+destination. The retired Windows VHDX is excluded from this procedure.
 
 Run from the reviewed repository root. Use the private, access-restricted, encrypted Windows storage used for operational data before copying the closed artifacts into ignored `data/`. Set the host and identity placeholders from the operator's approved private configuration. The SSH key authenticates through the local terminal. The closed artifacts contain Twitch metadata and remain private.
 
@@ -617,6 +735,10 @@ systemctl show viralclip-gta-vi.service -p MainPID -p ActiveState -p UnitFileSta
 Keep the operations files, backups, markers, and configuration for diagnosis. Operations rollback leaves both live observation histories in place, including observations newer than every backup. Verify that both PIDs and SQLite device/inode pairs match the baseline and that jobs and watermarks advance. If a live database itself fails, first preserve the current DB/WAL/SHM and exclude its writer under separate incident authorization. Verify a backup restored to a fresh isolated path, compare its watermark with the last known observation, and obtain the loss decision before any live recovery. An older recovery copy can lose all later observations and the views Twitch reported at those times cannot be reconstructed. [Recovery safeguards](BACKUP_AND_MONITORING.md#monitoring-and-restore).
 
 ## Acceptance and risk
+
+These are the original operations-rollout criteria. The operator waived
+off-VPS acceptance and cancelled the backup rollout. Collector reliability,
+monitoring and boot recovery remain open under the current plan.
 
 - Baseline and post-rollout evidence shows two independent healthy services, the same distinct PIDs and database inodes, zero foreign-key and wrong-category records, and successful discovery, observations and scheduled jobs advancing. Use the audit to track unexpected gaps, exhausted jobs and overdue ages. Empty successful discovery can be valid.
 - Both closed pre-rollout anchors verify by game and SHA-256 outside the VPS. Each Restic repository uses a separate confirmed prefix, scoped credentials and repository ID. Each latest scheduled backup is visible locally and offsite. Both fresh offsite restore drills verify the same game, hash and latest observation as their upload manifests.

@@ -1,7 +1,12 @@
 # OVH production backup and monitoring
 
-For the current two-collector rollout, follow the
-[dual-collector deployment checklist](DUAL_COLLECTOR_OPERATIONS.md).
+The backup rollout below is historical. The operator cancelled M1-02 and
+waived the unmet off-VPS requirement of M1-01. Use the
+[current collection and monitoring plan](MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan)
+for present operations.
+
+The original [dual-collector deployment checklist](DUAL_COLLECTOR_OPERATIONS.md)
+records the planned backup and restore workflow.
 
 This stack is separate from `viralclip-collector.service`. It reads the existing
 database and writes backups and markers under

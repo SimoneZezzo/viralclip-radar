@@ -155,8 +155,8 @@ For offline preparation of boot startup, crash recovery and operator controls,
 see the [Windows supervision runbook](docs/WINDOWS_SUPERVISION.md).
 For staged Oracle ARM64 or generic x86-64 setup and the single-writer
 handoff, see the [Linux deployment runbook](docs/LINUX_DEPLOYMENT.md).
-For automated verified backups and read-only health alerts, see the
-[backup and monitoring runbook](docs/BACKUP_AND_MONITORING.md).
+For the active no-backup policy, collector health and disk monitoring, see the
+[collection and monitoring plan](docs/MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan).
 
 ## What the observations mean
 

@@ -175,6 +175,154 @@ Rollback restores the prior discovery behavior and may bring back the
 stall. If capacity is insufficient, quantify the gap and seek approval
 for any configuration change.
 
+### 2026-11-21 VPS preflight
+
+Both units were active in the 13:59 UTC sample. GTA V was enabled at
+boot and GTA VI disabled. Both use distinct Python 3.12.3 environments,
+SQLite 3.45.1, project version 0.1.0, HTTPX 0.28.1 and python-dotenv 1.2.4.
+The GTA VI discovery, launcher, database and HTTP modules match the
+release parent. The installed `deployment.py` and `operations.py`
+differ from that parent. The installed deployment helper still exposes
+`_open_read_only(database: Path)` and `_check_schema(reader)`. Both
+databases have migration versions 1 and 2. The candidate requires no
+migration.
+
+**NO-GO for a whole-package replacement.** Proceed to isolated staged
+validation only after approval. The commands that transfer files,
+write to staging and switch or stop/start the service all require
+explicit rollout authorization. The following procedure preserves the
+installed helper modules and dependency versions.
+
+1. Use SCP with the existing identity to a new private staging directory
+   under `/home/ubuntu`. Check the full SHA-256 there against the value
+   above before extracting. Extract only
+   `src/viralclip/collector/service.py` and `src/viralclip/gta_vi.py`.
+   Confirm their SHA-256 values are
+   `46cce79067d4fdfad4c43dc7a4bca2b777645192b3fb927b100d15c9e6aafb36`
+   and `39abcede407ab334b94fa247ee94e076eb33d434c60e0b664b48e6224ea2a9a0`.
+2. Build a root-owned sibling `/opt/viralclip-gta-vi.next` on the same
+   filesystem by copying the current dedicated GTA VI runtime tree,
+   omitting Python bytecode caches. Require the sibling path to be
+   unused. In that copy replace the two corresponding files under
+   `.venv/lib/python3.12/site-packages/viralclip/`. Refresh their two
+   hash and size entries in the installed distribution's `RECORD`
+   with SHA-256 encoded as unpadded URL-safe Base64. Verify all other
+   installed sources and dependencies are unchanged. Confirm the two
+   input hashes again. As `viralclip-gta-vi`, use the staged interpreter
+   with `-IB` to import both modules and check their resolved paths and
+   ID `1867279146`. Run the mocked discovery regression in a disposable
+   test environment. Leave credentials and live DB paths out of testing.
+3. Refresh the read-only baseline and verify disk reserve and access
+   for the service user. Prove `renameat2` with `RENAME_EXCHANGE`
+   works between two disposable directories on the same filesystem.
+   The preflight observed ext4, the libc function, root-owned separate
+   runtime directories and no conflicting systemd stop dependencies.
+   Halt if the rehearsal, path, baseline or scope differs.
+4. Stop with `sudo systemctl stop viralclip-gta-vi.service`. Confirm
+   `MainPID=0`, an empty service cgroup and no process holding the GTA VI
+   SQLite files that still exist. Use one `renameat2` exchange between
+   `/opt/viralclip-gta-vi` and `/opt/viralclip-gta-vi.next`. On exchange
+   failure, confirm the previous runtime remains at the live path and
+   escalate immediately. On success, keep the previous runtime at
+   `.next`, verify the new interpreter paths and module hashes at the
+   live path, then run `sudo systemctl start viralclip-gta-vi.service`.
+   Verify the new writer owns only the original GTA VI DB. Preserve the
+   original systemd unit, environment, authorization and boot state.
+5. Apply the three-cycle checks above with read-only probes of both
+   games. Compare job P95 with the 5s GTA VI preflight baseline and judge
+   it alongside overdue and failed jobs. Compare API error rates against
+   zero observed API errors in the preflight hour. A persistent saturated
+   minute must remain flagged as partial. Live catch-up capacity is
+   unknown until measured.
+6. For an authorized rollback, stop GTA VI, verify writer exit, exchange
+   the same two directories back, validate the original source hashes,
+   and start GTA VI. Verify database identity and continued observations,
+   and compare GTA V with its preflight identity. The exchange leaves
+   state paths alone. Normal SQLite close and restart can flush or
+   recreate sidecars. Preserve the persisted checkpoint and run history.
+
+### Coverage gate after the live Helix diagnostic
+
+The [recovery replay and validation gate](GTA_VI_DISCOVERY_REPLAY.md)
+records the paired-page candidate and the rejection of five-minute
+narrowing for the rounded-boundary case.
+
+On November 21, an aligned Helix query for November 20 23:10–23:20 UTC
+ended without a cursor but missed at least 60 clips from 23:19–23:20
+that Helix returned by ID in the same diagnostic. Separate featured and
+non-featured sequences also omitted IDs previously seen in the
+unfiltered sequence. Timestamp filtering and deduplication can improve
+result relevance. They provide no evidence that an exhausted query
+covered the requested window.
+
+Keep the GTA VI checkpoint behind the unresolved interval. A candidate
+that advances it must demonstrate coverage through an independently
+verifiable retrieval method. Known-ID checks can falsify a coverage
+claim. They cannot enumerate clips whose IDs are unknown. The active
+runtime and the preserved rollback runtime remain available.
+[Diagnostic evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-helix-coverage-blocker)
+
+### Separate scan progress and coverage
+
+The GTA VI scan ledger is an optional additive extension to the existing
+SQLite v2 core. It joins to `collection_runs` by run ID and is written
+with the final run counters in one transaction. The former GTA VI
+checkpoint and historical records remain intact. The prior runtime
+can still open the database without a downgrade. GTA V continues on
+the existing code path and does not create the ledger.
+
+| Signal | Meaning |
+| --- | --- |
+| Recent scan watermark | Greatest end of a recent window where a discovery request was attempted. It is independent of historical holes. |
+| Historical scan watermark | End of the contiguous historical attempt sweep, starting at the preserved legacy checkpoint when available. |
+| `cursor_exhausted` / `scanned` | Helix ended pagination and no omission of a known ID was detected. Coverage is uncertified. |
+| `known_incomplete` | Pagination ended, but at least one already-known clip in the target interval was absent. |
+| `budget`, `page_limit`, `error`, `pagination_anomaly` | The scan stopped before it demonstrated a clean pagination end. The run preserves the reason and counters. |
+| No recorded attempt | An interval is unscanned under the new policy. Old `completed` runs record legacy pagination only. |
+
+Each cycle gives scheduled observations priority before discovery and
+before each page. Up to ten logical pages go to the current ten-minute
+UTC bucket, seven to the preceding bucket for delayed indexing, and
+three to a historical interval. The request uses bucket-aligned bounds
+and the persistence filter applies the original `created_at` to the
+actual target, excluding the part of the open bucket after the cycle
+cutoff. Raw rows, pertinent rows, unique persisted candidates and
+repeated IDs are counted separately. A repeated cursor, a cursor
+with no new IDs, or timestamps outside the API request bounds stop
+the scan. The legacy raw 900-row heuristic is retained on the GTA V path.
+
+The historical pass records each attempted bucket and proceeds with
+the next. Once the sweep catches up, an incomplete historical interval
+can be revisited once after a 30-minute delay. Its original attempt
+and status stay visible. The current and previous buckets are revisited
+each cycle. An API error uses the existing bounded client retries and
+remains visible in the run ledger. Logical budgets exclude those retries
+and scheduled refresh calls.
+
+The scan watermark measures progress only. Coverage and the number of
+undiscovered clips remain unknown. View-ranked capped responses can
+favor popular clips, so future datasets must treat the observed clips
+as a selected population. Existing feature and label rules use actual
+observation times and retain missing observations and late discovery.
+The dataset and evaluation code does not derive candidate completeness
+from the scan watermark. A full UTC-day cohort still requires
+independent coverage evidence.
+
+### Persistent boot enablement
+
+The installed GTA VI unit is enabled persistently under
+`multi-user.target`, pulled in by the host's default
+`graphical.target`. The configuration requires its existing runtime,
+service account, writable state directory, environment file and
+authorization marker. Network ordering uses `network-online.target`
+and the configured networkd wait-online service.
+
+Verify with `systemctl is-enabled viralclip-gta-vi.service` and inspect
+the symlink under `/etc/systemd/system/multi-user.target.wants/`.
+The enablement used `systemctl enable` with both collectors running.
+Actual reboot recovery has yet to be tested.
+[Enablement evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-persistent-boot-enablement)
+
 ## Windows preparation
 
 From the repository root, the optional read-only exact check uses your

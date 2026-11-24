@@ -1,9 +1,9 @@
 # Final operations rollout for GTA V and GTA VI
 
-For the current OVH first installation, use the
-[Milestone 1 gated rollout](MILESTONE_1_ROLLOUT.md). It starts with a read-only
-inventory and independently verified recovery copies of both live databases.
-The health command below is also used by that procedure.
+The backup and deployment instructions below record the original OVH
+rollout. M1-02 is cancelled. Use the
+[current collection and monitoring plan](MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan)
+and the read-only checks below for present operations.
 
 The read-only preflight can run on its own. The rollout sections require
 separate deployment approval and install only operations units. The general

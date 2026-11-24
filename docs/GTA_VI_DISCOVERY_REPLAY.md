@@ -160,3 +160,9 @@ were still within 60 minutes. It establishes when this probe received
 the extra IDs. Production cadence, observed feature availability in the
 database, unseen Twitch clips, and whole-day primary search evidence
 remain separate questions.
+
+The authorized November 23 canary passed, and GTA VI now uses eight
+overlap pages. All three matched-phase cycles reached page 8 and
+recovered 20 previously unseen clips within 60 minutes across two
+distinct windows. The initial M2 readiness check remains PARTIAL.
+[Production evidence and final configuration](PROJECT_HISTORY.md#2026-11-23-gta-vi-eight-page-canary)
