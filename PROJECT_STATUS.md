@@ -18,19 +18,33 @@ Last updated 2026-11-24 (Europe/Rome).
   and predeclare validation and test boundaries before reading scores. Check
   whether an independent, verifiable ID reference is available for GTA VI
   primary discovery. [M2 audit](docs/M2_COHORT_AUDIT.md)
-- **Live ranking contract.** Specify which predictions to record, including
+- **Future live ranking contract.** Specify which predictions to record, including
   prediction time, cutoff and score version. Exercise the contract offline
   with a baseline and synthetic inputs. [Inference design](docs/project-manual/09-MACHINE-LEARNING.md#23-dalla-misura-alleventuale-inferenza)
 
 ## GitHub source repository
 
-The [private development repository](https://github.com/SimoneZezzo/viralclip-radar)
-hosts the reviewed `main` branch. The first import passed the offline workflow
-on Windows and Ubuntu. Historical deployment evidence retains the original
-local revisions that identify the deployed artifacts.
+Development continues on local `main`. The private GitHub repository was
+deleted on November 24 after the initial import passed the offline workflow
+on Windows and Ubuntu. Future publication will use a reviewed release copy.
 [Import and verification](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-and-verification)
 
 ## Current priority
+
+**M1 closeout PENDING, November 24.** The local gate reports a readiness time
+of 15:25:11.673436 UTC for the paired 48-hour journal check. The operator
+selected November 27 at 09:00 UTC as the candidate reboot window to protect
+the November 24–25 M2 cohorts. The window depends on the journal result,
+fresh preflight and separate reboot authorization.
+[Closeout sequence](docs/PROJECT_HISTORY.md#2026-11-24-m1-gate-and-m2-calendar-preparation)
+
+**M2 readiness PARTIAL, November 24.** At the common 09:39:48 UTC watermark,
+November 22–24 yielded zero primary calendar candidates and zero feasible
+split pairs for either game. The observed-at-cutoff replay of November 19–21
+returned `INSUFFICIENT DATA` at all four cutoffs. The preliminary 60m calendar
+targets November 24–25 for train, November 28–29 for validation and December
+2–3 for test, subject to audited admissibility and the 24h+5m embargo.
+[Audit and benchmark preparation](docs/PROJECT_HISTORY.md#2026-11-24-m1-gate-and-m2-calendar-preparation)
 
 **GTA VI canary labels MEASURED, November 24.** At the 09:39:48 UTC
 watermark, all 20 first discoveries from the eighth overlap page had both
