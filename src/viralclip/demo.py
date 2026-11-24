@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
-from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlsplit
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 
 from viralclip.collector.service import GTA_VI_GAME_ID, Collector
 from viralclip.predictions import _connect_registry, rank_pool, read_run
 from viralclip.storage.database import Database, to_utc_iso
 
 REGISTRY = Path("data/demo/registry-v3.sqlite3")
-ASSETS = Path(__file__).with_name("demo_web")
+# Built by `npm --prefix web run build`; the demo runs from a source checkout.
+ASSETS = Path(__file__).resolve().parents[2] / "web" / "dist"
 FIXTURE_REVISION = "fixture-v4"
 CUTOFF = 60
 DAY = datetime(2026, 11, 22, tzinfo=UTC)
@@ -163,51 +164,57 @@ def read_ranking(path: Path, game_id: str) -> dict:
     }
 
 
-def handler(registry: Path) -> type[BaseHTTPRequestHandler]:
-    assets = {
-        "/": ("index.html", "text/html; charset=utf-8"),
-        "/styles.css": ("styles.css", "text/css; charset=utf-8"),
-        "/app.js": ("app.js", "text/javascript; charset=utf-8"),
-        "/gameplay.jpg": ("gameplay.jpg", "image/jpeg"),
-    }
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
 
-    class DemoHandler(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:
-            request = urlsplit(self.path)
-            if request.path == "/api/ranking":
-                values = parse_qs(request.query, keep_blank_values=True)
-                game_id = values.get("game_id", [GTA_VI_GAME_ID])[0]
-                if game_id not in GAMES:
-                    self.send_error(HTTPStatus.NOT_FOUND, "Unknown game")
-                    return
-                body = json.dumps(read_ranking(registry, game_id), ensure_ascii=False).encode()
-                content_type = "application/json; charset=utf-8"
-            elif request.path in assets:
-                name, content_type = assets[request.path]
-                body = (ASSETS / name).read_bytes()
-            else:
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header(
-                "Content-Security-Policy",
-                "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
+
+def create_app(registry: Path, assets: Path = ASSETS) -> FastAPI:
+    """FastAPI app: the ranking API plus the built React front end from `web/dist`."""
+    app = FastAPI(
+        title="ViralClip Radar demo",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url="/api/openapi.json",
+    )
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers.update(SECURITY_HEADERS)
+        if request.url.path.startswith("/api/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+    @app.get("/api/ranking")
+    def ranking(game_id: str = GTA_VI_GAME_ID) -> dict:
+        if game_id not in GAMES:
+            raise HTTPException(status_code=404, detail="Unknown game")
+        return read_ranking(registry, game_id)
+
+    if (assets / "index.html").is_file():
+        app.mount("/", StaticFiles(directory=assets, html=True), name="web")
+    else:
+
+        @app.get("/", response_class=PlainTextResponse, status_code=503)
+        def missing_front_end() -> str:
+            return (
+                "The front end is not built. Run: npm --prefix web ci; npm --prefix web run build"
             )
-            self.end_headers()
-            self.wfile.write(body)
 
-    return DemoHandler
+    return app
 
 
 def run_demo(port: int) -> None:
+    import uvicorn
+
     prepare_registry(REGISTRY)
-    with ThreadingHTTPServer(("127.0.0.1", port), handler(REGISTRY)) as server:
-        print(f"Local demo: http://127.0.0.1:{server.server_port}", flush=True)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+    if not (ASSETS / "index.html").is_file():
+        print("Front end not built: run `npm --prefix web ci` and `npm --prefix web run build`.")
+    print(f"Local demo: http://127.0.0.1:{port}", flush=True)
+    uvicorn.run(create_app(REGISTRY), host="127.0.0.1", port=port, log_level="warning")

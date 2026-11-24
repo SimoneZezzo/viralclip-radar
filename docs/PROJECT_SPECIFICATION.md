@@ -33,7 +33,7 @@ This section defines the scope of M0–M4. The [long-term product vision](LONG_T
 4. Preserve discovery lag, API coverage metadata, missing observations and operational errors.
 5. Create early-popularity features and rank clips through simple baselines before training ML.
 6. Once enough prospective observations exist, train/evaluate models (e.g. logistic regression and LightGBM) with leakage-free temporal splits.
-7. Offer a local, read-only Streamlit UI linking to the original Twitch clip and showing prediction vs subsequent outcome.
+7. Offer a local, read-only web UI linking to the original Twitch clip and showing prediction vs subsequent outcome (React + TypeScript with a FastAPI backend, owner decision 2026-11-24; originally Streamlit).
 8. Ship an open-source, understandable, easy-to-run repo with synthetic sample data and reproducible benchmark code.
 
 ### What it DOES NOT do
@@ -220,7 +220,7 @@ Using mocked Twitch API responses and a frozen clock, show that:
 
 ## 7. Milestone 4 — Open-source demo / GitHub presentation
 
-- Streamlit local dashboard with game selection, emerging clip ranking, direct **original Twitch links**, growth timeline, prediction cutoff, and later the observed 24-hour outcome.
+- Local web dashboard (React + TypeScript, FastAPI; originally Streamlit) with game selection, emerging clip ranking, direct **original Twitch links**, growth timeline, prediction cutoff, and later the observed 24-hour outcome.
 - Demo must work offline with generated synthetic rows clearly labeled `SYNTHETIC / NOT REAL TWITCH DATA`.
 - README in **English**: succinct question, demo/GIF when available, 60-second quickstart, technical architecture, model/evaluation methodology, limitations, data usage notes, and roadmap.
 - Include `.env.example`, reasonable `.gitignore`, MIT code license, tests, GitHub Actions for lint/tests, and contributing guidance.

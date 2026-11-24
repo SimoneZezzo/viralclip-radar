@@ -51,6 +51,8 @@ flowchart LR
 | [m2_audit.py](../src/viralclip/m2_audit.py) | Audit delle coorti per giorno UTC e prove di copertura. |
 | [operations.py](../src/viralclip/operations.py), [deployment.py](../src/viralclip/deployment.py), [storage/backup.py](../src/viralclip/storage/backup.py) | Backup online, manifest, restore isolato. |
 | [gta_vi.py](../src/viralclip/gta_vi.py), [windows_supervision.py](../src/viralclip/windows_supervision.py) | Preflight GTA VI; supervisione con Task Scheduler su Windows. |
+| [predictions.py](../src/viralclip/predictions.py), [synthetic.py](../src/viralclip/synthetic.py) | Registro delle previsioni; generatore sintetico e prova completa a secco. |
+| [demo.py](../src/viralclip/demo.py), [web/](../web/) | Demo: API FastAPI e app React + TypeScript (Vite, Tailwind CSS, TanStack Query). |
 
 ## 3. Una clip in un giorno
 

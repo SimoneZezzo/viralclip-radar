@@ -1,15 +1,12 @@
-import json
 import sqlite3
 from contextlib import closing
-from http.client import HTTPConnection
-from http.server import ThreadingHTTPServer
-from threading import Thread
 
 import pytest
+from fastapi.testclient import TestClient
 
 from viralclip.cli import main
 from viralclip.collector.service import GTA_VI_GAME_ID
-from viralclip.demo import handler, prepare_registry, read_ranking
+from viralclip.demo import create_app, prepare_registry, read_ranking
 
 
 def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(tmp_path):
@@ -81,40 +78,38 @@ def test_demo_rejects_an_existing_unrelated_database(tmp_path):
     assert path.read_bytes() == original
 
 
-def test_demo_serves_only_supported_games_and_static_assets(tmp_path):
+def test_demo_api_serves_supported_games_with_security_headers(tmp_path):
     path = tmp_path / "ranking.sqlite3"
     prepare_registry(path)
-    with ThreadingHTTPServer(("127.0.0.1", 0), handler(path)) as server:
-        thread = Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            with closing(HTTPConnection("127.0.0.1", server.server_port, timeout=3)) as client:
-                client.request("GET", "/")
-                response = client.getresponse()
-                assert response.status == 200
-                page = response.read()
-                assert b'lang="en"' in page
-                assert b"Copy clip link" in page and b"Edit in your own editor" in page
-                assert b"Download" not in page
-                client.request("GET", "/media.js")
-                response = client.getresponse()
-                response.read()
-                assert response.status == 404
-                client.request("GET", "/gameplay.jpg")
-                response = client.getresponse()
-                assert response.read().startswith(b"\xff\xd8\xff")
-                client.request("GET", "/api/ranking?game_id=32982")
-                response = client.getresponse()
-                assert response.status == 200
-                report = json.loads(response.read())
-                assert report["synthetic"] and report["run"]["game_id"] == "32982"
-                client.request("GET", "/api/ranking?game_id=unknown")
-                response = client.getresponse()
-                response.read()
-                assert response.status == 404
-        finally:
-            server.shutdown()
-            thread.join()
+    assets = tmp_path / "dist"
+    assets.mkdir()
+    (assets / "index.html").write_text('<!doctype html><html lang="en"></html>', "utf-8")
+    client = TestClient(create_app(path, assets))
+
+    page = client.get("/")
+    assert page.status_code == 200 and 'lang="en"' in page.text
+    assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    assert page.headers["x-content-type-options"] == "nosniff"
+    report = client.get("/api/ranking", params={"game_id": "32982"})
+    assert report.status_code == 200
+    assert report.headers["cache-control"] == "no-store"
+    body = report.json()
+    assert body["synthetic"] and body["run"]["game_id"] == "32982"
+    assert body == read_ranking(path, "32982")
+    assert client.get("/api/ranking").json()["run"]["game_id"] == GTA_VI_GAME_ID
+    assert client.get("/api/ranking", params={"game_id": "unknown"}).status_code == 404
+    assert client.get("/docs").status_code == 404
+    assert client.get("/api/openapi.json").json()["info"]["title"] == "ViralClip Radar demo"
+
+
+def test_demo_explains_an_unbuilt_front_end(tmp_path):
+    path = tmp_path / "ranking.sqlite3"
+    prepare_registry(path)
+    client = TestClient(create_app(path, tmp_path / "missing"))
+    response = client.get("/")
+    assert response.status_code == 503
+    assert "npm --prefix web run build" in response.text
+    assert client.get("/api/ranking").status_code == 200
 
 
 def test_demo_cli_does_not_load_collector_settings(monkeypatch):
@@ -123,6 +118,6 @@ def test_demo_cli_does_not_load_collector_settings(monkeypatch):
 
     calls = []
     monkeypatch.setattr("viralclip.cli.load_settings", unexpected_settings)
-    monkeypatch.setattr("viralclip.cli.run_demo", calls.append)
+    monkeypatch.setattr("viralclip.demo.run_demo", calls.append)
     assert main(["demo", "--port", "8766"]) == 0
     assert calls == [8766]

@@ -14,7 +14,6 @@ from viralclip.benchmark import run_benchmark
 from viralclip.collector.service import Collector
 from viralclip.config import load_settings
 from viralclip.dataset import CUTOFFS, Selection, extract
-from viralclip.demo import run_demo
 from viralclip.evaluation import run_evaluation
 from viralclip.observed_evaluation import MODE as OBSERVED_COHORT
 from viralclip.observed_evaluation import run_observed_evaluation
@@ -123,6 +122,14 @@ def main(argv: list[str] | None = None) -> int:
     )  # Legge le parole del comando e le converte in un oggetto con attributi.
 
     if args.command == "demo":
+        try:
+            # Imported here: FastAPI is a development dependency, absent from collector installs.
+            from viralclip.demo import run_demo
+        except ImportError as exc:
+            print(
+                f"Demo unavailable: {exc}. Run uv sync to install the dev group.", file=sys.stderr
+            )
+            return 1
         try:
             run_demo(args.port)
         except (ValueError, OSError, sqlite3.Error) as exc:

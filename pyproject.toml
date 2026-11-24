@@ -14,8 +14,10 @@ viralclip = "viralclip.cli:main"
 
 [dependency-groups]
 dev = [
+    "fastapi>=0.115",
     "pytest>=9.2.0",
     "ruff>=0.17.5",
+    "uvicorn>=0.32",
 ]
 
 [build-system]

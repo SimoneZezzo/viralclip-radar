@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+/* Tokens from DESIGN.md. Utilities such as bg-canvas or text-ink-subtle use them. */
+@theme {
+  --color-accent: #d1f95b;
+  --color-accent-hover: #e0ff84;
+  --color-on-accent: #182309;
+  --color-accent-line: #7d9839;
+  --color-ink: #eff1ea;
+  --color-ink-muted: #dbe0d3;
+  --color-ink-subtle: #a4ab9e;
+  --color-canvas: #101110;
+  --color-chrome: #121411;
+  --color-surface-1: #171916;
+  --color-surface-2: #21251b;
+  --color-surface-3: #242b1b;
+  --color-control: #262b23;
+  --color-hairline: #2d312b;
+  --color-hairline-strong: #40483a;
+  --color-hairline-accent: #505e31;
+  --color-danger: #ffb999;
+  --font-sans: Geist, "DM Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+  /* DESIGN.md breakpoints, used with max-* variants (max-sm is below 666px). */
+  --breakpoint-xs: 351px;
+  --breakpoint-sm: 666px;
+  --breakpoint-md: 851px;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  body {
+    @apply m-0 min-w-[280px] bg-canvas font-sans text-ink;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+}
+
+/* Synthetic artwork crops shared by thumbnails and the preview poster. */
+@layer components {
+  .artwork {
+    background: #242b2c url("/gameplay.jpg") center 60% / cover no-repeat;
+  }
+  .scene-1 { background-position: 35% 18%; }
+  .scene-2 { background-size: 161%; background-position: 76% 50%; }
+  .scene-3 { background-size: 140%; background-position: 8% 56%; }
+  .scene-4 { background-position: 85% 45%; }
+  .scene-5 { background-size: 148%; background-position: 47% 76%; }
+  .thumb.scene-1, .thumb.scene-4 { filter: hue-rotate(27deg); }
+  .thumb.scene-2, .thumb.scene-5 { filter: hue-rotate(-32deg); }
+  .button-primary {
+    @apply inline-grid min-h-10 flex-1 place-items-center rounded-[7px] border border-transparent bg-accent px-2.5 py-[7px] text-center text-[0.8rem] font-bold text-on-accent no-underline hover:bg-accent-hover;
+  }
+  .button-secondary {
+    @apply inline-grid min-h-10 place-items-center rounded-[7px] border border-hairline-strong bg-control px-2.5 py-[7px] text-center text-[0.8rem] font-bold text-ink no-underline hover:bg-[#30382b] disabled:cursor-default disabled:opacity-[0.49] disabled:hover:bg-control;
+  }
+}

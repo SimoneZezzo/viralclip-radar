@@ -6,8 +6,21 @@ their real timestamps. Model validation requires mature chronological cohorts.
 
 ## Local portfolio demo
 
-Run `uv run --offline --no-sync viralclip demo` from the checkout and open
-`http://127.0.0.1:8765`. Stop the local server with Ctrl+C.
+The demo is a React + TypeScript app (`web/`, built with Vite and Tailwind CSS)
+served by a FastAPI backend. Build the front end once, then start the server
+from the checkout:
+
+```powershell
+npm --prefix web ci
+npm --prefix web run build
+uv run --offline --no-sync viralclip demo
+```
+
+Open `http://127.0.0.1:8765` and stop the server with Ctrl+C. For front-end
+work, keep the demo running and use `npm --prefix web run dev`, which proxies
+`/api` to it. `npm ci` needs network access once; builds and tests then run
+offline. FastAPI and Uvicorn are in the uv `dev` group, so collector installs
+do not need them.
 
 The demo builds a collector database holding only synthetic clips, labeled
 `SYNTHETIC / NOT REAL TWITCH DATA`, ranks it through the live ranking

@@ -39,9 +39,25 @@ spacing: { base: 4px, xs: 8px, sm: 12px, md: 16px, lg: 24px, xl: 48px }
 # ViralClip Radar design system
 
 Read this file only for frontend or UI work. The current UI is the local
-portfolio demo in `src/viralclip/demo_web/` (`index.html`, `styles.css`,
-`app.js`) served by `src/viralclip/demo.py`. Future UIs, such as
-the M4 dashboard, follow the same rules.
+portfolio demo: a React + TypeScript app in `web/` (Vite, Tailwind CSS,
+TanStack Query) built to `web/dist` and served by the FastAPI app in
+`src/viralclip/demo.py`. Future UIs, such as the M4 dashboard, follow the
+same rules.
+
+## Implementation
+
+- Tokens live once, in the `@theme` block of `web/src/index.css`, as Tailwind
+  theme variables (`--color-accent`, `--color-surface-1`, ...). Use the
+  generated utilities (`bg-surface-1`, `text-ink-subtle`, `border-hairline`)
+  rather than raw hex values.
+- Breakpoints are theme variables used with `max-*` variants: `max-md` below
+  851px, `max-sm` below 666px, `max-xs` below 351px.
+- Components: `TopBar`, `Overview`, `RankingPanel`, `ClipDetails` in
+  `web/src/components/`. Shared button styles are the `button-primary` and
+  `button-secondary` component classes.
+- Checks: Vitest and Testing Library for behavior and truthful states;
+  Playwright against the built demo for console errors (including CSP
+  violations) and no horizontal scroll at 1264, 850, 665 and 320px.
 
 ## Product identity
 
@@ -150,7 +166,8 @@ demo works offline). Mono: `"IBM Plex Mono", Consolas, monospace`.
   hairline box: version, score, clip cutoff, clip link.
 - **Clip actions.** Primary "Copy clip link"; secondary "Open on Twitch"
   link, disabled with `aria-disabled="true"` and a stated reason when the
-  clip has no Twitch page. An "Edit in your own editor" block lists
+  clip has no Twitch page (rendered as a disabled button, since a link
+  without `href` is not announced). An "Edit in your own editor" block lists
   external editors as plain links, with no integration.
 - **Buttons.** `primary`: accent fill, `on-accent` text, grows to fill the
   row; one per view. `secondary`: `control` fill with `hairline-strong`
@@ -213,5 +230,5 @@ Don't:
 Structure and principles adapted on 2026-11-24 from
 `design-md/linear.app/DESIGN.md` in
 [VoltAgent/awesome-design-md](https://github.com/VoltAgent/awesome-design-md).
-Token values were extracted from `src/viralclip/demo_web/styles.css`, not
+Token values were extracted from the first demo stylesheet, not
 copied from the reference.

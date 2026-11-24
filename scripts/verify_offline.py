@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -242,6 +243,72 @@ def powershell_check(scratch: Path, env: dict[str, str]) -> tuple[str, str]:
     )
 
 
+def web_directory() -> Path:
+    # Vitest loads modules twice when the drive letter is lower case, so normalize it.
+    path = str(ROOT / "web")
+    return Path(path[0].upper() + path[1:]) if os.name == "nt" else Path(path)
+
+
+def npm_run(arguments: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [shutil.which("npm") or "npm", *arguments],
+        cwd=web_directory(),
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=300,
+        check=False,
+    )
+
+
+def web_ready() -> tuple[str, str] | None:
+    if shutil.which("npm") is None:
+        return SKIP, "Node.js and npm unavailable"
+    if not (web_directory() / "node_modules").is_dir():
+        return (
+            UNKNOWN,
+            "web/node_modules missing. Run npm --prefix web ci once with network access.",
+        )
+    return None
+
+
+def web_check(env: dict[str, str]) -> tuple[str, str]:
+    if (blocked := web_ready()) is not None:
+        return blocked
+    tests = ""
+    for name, arguments in (
+        ("ESLint", ["run", "lint"]),
+        ("TypeScript", ["run", "typecheck"]),
+        ("Vitest", ["test"]),
+        ("Vite build", ["run", "build"]),
+    ):
+        result = npm_run(arguments, env)
+        if result.returncode:
+            return FAIL, f"{name}: exit {result.returncode}\n{details(result)}"
+        if name == "Vitest":
+            plain = re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
+            match = re.search(r"Tests\s+(\d+) passed", plain)
+            tests = f", {match.group(1)} unit tests" if match else ""
+    return PASS, f"ESLint, TypeScript, Vite build{tests}"
+
+
+def web_e2e_check(env: dict[str, str]) -> tuple[str, str]:
+    if (blocked := web_ready()) is not None:
+        return blocked
+    if not (web_directory() / "dist" / "index.html").is_file():
+        return UNKNOWN, "web/dist missing. The Web check builds it first."
+    result = npm_run(["run", "test:e2e"], env)
+    output = result.stdout + result.stderr
+    if result.returncode and "is not found" in output and "chrome" in output.lower():
+        return SKIP, "Google Chrome unavailable for Playwright"
+    if result.returncode:
+        return FAIL, f"exit {result.returncode}\n{details(result)}"
+    match = re.search(r"(\d+) passed", output)
+    return PASS, f"{match.group(1) if match else 'All'} Playwright tests against the built demo"
+
+
 def packaging_check(scratch: Path) -> tuple[str, str]:
     revision = git(ROOT, "rev-parse", "HEAD").decode().strip()
     try:
@@ -266,6 +333,8 @@ def main() -> int:
             "Git": git_check,
             "Bash": lambda: bash_check(env),
             "PowerShell": lambda: powershell_check(scratch, env),
+            "Web": lambda: web_check(env),
+            "Web e2e": lambda: web_e2e_check(env),
             "Packaging": lambda: packaging_check(scratch),
         }
         for name, check in checks.items():
