@@ -4,6 +4,8 @@
 
 ## Il problema da risolvere
 
+Questo capitolo descrive il prodotto Twitch previsto da M0–M4. Per gli obiettivi dei clipper, degli editor e dei creator dopo M4, consulta la [visione di lungo termine](../LONG_TERM_PRODUCT_VISION.md).
+
 Supponi di dover scegliere dieci clip fra centinaia appena pubblicate. Vedere quali hanno oggi più visualizzazioni risponde a una domanda retrospettiva. Per scegliere prima che diventino note servono misure disponibili allo stesso punto del loro ciclo di vita e un criterio con cui valutare la scelta il giorno successivo. Un possibile utilizzatore è un ricercatore o uno sviluppatore che studia la diffusione delle clip. Come ipotesi di prodotto, un lettore interessato alle clip emergenti potrebbe consultare una classifica. Il repository mette oggi a disposizione comandi terminale da operatore e report di ricerca locali. [Scopo originale](../PROJECT_SPECIFICATION.md#1-product-scope) · [CLI](../../src/viralclip/cli.py)
 
 Twitch ospita le clip e fornisce i metadati pubblici via Helix. ViralClip Radar osserva in avanti. Quando ottiene una risposta registra il conteggio cumulativo disponibile in quel momento. L'API consente di aggiornare un ID noto, ma riscaricare oggi il suo record non restituisce le visualizzazioni di ieri a dieci minuti dalla creazione. Il valore di questo sistema è quindi la serie di misure datate che si accumula e sopravvive al riavvio. [Contratto delle osservazioni](../../README.md#what-the-observations-mean) · [Collector](../../src/viralclip/collector/service.py)

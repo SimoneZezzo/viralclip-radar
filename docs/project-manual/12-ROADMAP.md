@@ -2,7 +2,13 @@
 
 [Indice](00-INDEX.md) · [Stato e incertezze](11-CURRENT-STATUS.md) · [Decisioni](15-DECISION-REGISTER.md)
 
-Il prossimo passo concreto resta la fase 0 M1. Una volta chiusa questa documentazione, il ramo operativo riprende soltanto con l'autorizzazione prevista. Il ramo ricerca può maturare in parallelo al progredire dei dati raccolti. I tempi di maturità sono vincoli reali e non riducibili producendo più righe nello stesso giorno.
+## CURRENT SCOPE — M0–M4
+
+La priorità è chiudere M1 e M2. Per M1 servono collector affidabili 24/7 e prove di continuità e ripartenza. Per M2 occorre risolvere i problemi di discovery, copertura e qualità, ottenere coorti mature verificabili e valutare le baseline su split cronologici. M3 potrà iniziare quando queste evidenze saranno sufficienti. M4 conserva la demo offline con dati sintetici. Lo [stato operativo](../../PROJECT_STATUS.md#current-priority) riporta i gate aperti e le prossime verifiche.
+
+### Piano di lavoro storico
+
+La tabella seguente conserva le dipendenze del piano originario. Per M1 si applicano le decisioni successive, inclusa la rinuncia al backup fuori VPS e la cancellazione di M1-02. [Decisione del 21 novembre](../PROJECT_HISTORY.md#2026-11-21-research-first-strategy-and-read-only-audit)
 
 | Ordine, stato | Attività, motivazione e file | Prova di successo e rischio | Confine e risultato |
 | --- | --- | --- | --- |
@@ -21,3 +27,19 @@ Il prossimo passo concreto resta la fase 0 M1. Una volta chiusa questa documenta
 | 13, facoltativo | Dopo misure, valutare dichiarazione profili multi-game, riduzione N+1, hardening di backoff, monitor lag e metriche di commit-time o partition. | Baseline costi, regressioni mirate e invarianti preservati. Migrazioni solo con nuovo incarico e operatività autorizzata. | Miglioramenti per scala prodotto, non prerequisiti inventati per lo studio attuale. |
 
 [Runbook M1 e soglie](../MILESTONE_1_ROLLOUT.md#acceptance-and-risk) · [Gate di valutazione](../CHRONOLOGICAL_EVALUATION.md#when-scoring-is-permitted) · [Specifica delle milestone](../PROJECT_SPECIFICATION.md)
+
+## FUTURE SCOPE — dopo M4
+
+L'espansione si valuterà dopo le milestone attuali e dopo la validazione e distribuzione autorizzata del primo modello Twitch. La numerazione è indicativa. Prima di avviare ciascuna fase si definiranno prerequisiti, criteri di accettazione misurabili, metodo di validazione ed evidenze necessarie per decidere GO/NO-GO.
+
+| Fase proposta | Domanda da valutare |
+| --- | --- |
+| M5 — Multimodal Content Understanding | Quali segnali di video, audio e dialogo si possono estrarre in modo affidabile da clip autorizzate? |
+| M6 — Automated Video Editing | Il creator può ottenere, esaminare e approvare una variante verticale con sottotitoli? |
+| M7 — Social Publishing and Analytics | Per una piattaforma e un account autorizzato, si può pubblicare il montaggio approvato e misurarne gli esiti tramite API ufficiali? |
+| M8 — Cross-platform Dataset | Quali post e misure si possono attribuire con sufficiente certezza a una clip e a una variante utilizzabili per la ricerca? |
+| M9 — Cross-platform ML and Ranking | A parità di condizioni, la selezione specifica per piattaforma migliora i risultati rispetto alle baseline? |
+| M10 — MCP Server and tool Agent Integration | Un agente può usare il backend rispettando permessi, approvazione e tracciabilità? |
+| M11 — Continuous Experimental Optimization | Gli aggiornamenti derivati dai risultati pubblicati mantengono un vantaggio su coorti successive? |
+
+Obiettivo di prodotto, disegno degli esperimenti e responsabilità del backend sono descritti nella [visione di lungo termine](../LONG_TERM_PRODUCT_VISION.md).

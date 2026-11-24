@@ -4,6 +4,8 @@ Last updated 2026-11-24 (Europe/Rome).
 
 ## Product objectives in priority order
 
+These objectives apply to the current Twitch scope. The [long-term product vision](docs/LONG_TERM_PRODUCT_VISION.md) covers creator workflows after M4.
+
 1. **Live ranking.** Generate and record clip rankings at the prediction cutoff.
 2. **Absolute popularity.** Rank clips by predicted 24-hour views or top-decile
    membership within a comparable cohort.

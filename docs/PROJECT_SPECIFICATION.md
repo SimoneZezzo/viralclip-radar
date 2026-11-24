@@ -24,6 +24,8 @@ The original specification below preserves the product scope, technical contract
 
 ## 1. Product scope
 
+This section defines the scope of M0–M4. The [long-term product vision](LONG_TERM_PRODUCT_VISION.md) describes proposals for later milestones.
+
 ### What it DOES
 1. Discover publicly listed Twitch clips for configurable game categories through the official Helix API.
 2. Record view-count observations and their **real observation timestamps** as append-only snapshots.
