@@ -154,7 +154,8 @@ November 24 using the existing a subscription login and network access.
 See the [review workflow](docs/REVIEW_INTEGRATION.md)
 for the current sharing scope and synthetic acceptance probe.
 
-Development continues on local `main`; the
+The code is MIT-licensed (owner decision, November 24); Twitch data,
+derivatives and models stay private. Development continues on local `main`; the
 `docs/benchmark-protocol-and-plan` branch was fast-forwarded into it on
 November 24. The private GitHub repository was
 deleted on November 24 after the initial import passed CI on Windows and

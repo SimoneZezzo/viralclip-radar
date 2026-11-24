@@ -12,7 +12,7 @@ import tarfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-ROOT_FILES = (".python-version", "README.md", "pyproject.toml", "uv.lock")
+ROOT_FILES = (".python-version", "LICENSE", "README.md", "pyproject.toml", "uv.lock")
 PACKAGER = "scripts/package_release.py"
 REQUIRED = (
     *ROOT_FILES,

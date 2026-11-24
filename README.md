@@ -250,6 +250,15 @@ outcome linking. It writes `summary.json` in a new Git-ignored directory and
 needs no credentials or real data. The numbers describe the generator, not
 Twitch.
 
+## License
+
+The code is released under the [MIT License](LICENSE). The license covers this
+repository's code only. Collected Twitch data, derived datasets and models stay
+private under the Twitch terms and are not part of the repository. Third-party
+dependencies and the bundled agent skills keep their own licenses. Confirm the
+provenance of `web/public/gameplay.jpg` before any public release, or replace
+it with original artwork.
+
 ## Milestone and project progress
 
 See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the maintained milestone checklist,
