@@ -1,0 +1,21 @@
+[Unit]
+Description=ViralClip Radar read-only collector reliability (%i)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=%i
+Group=%i
+WorkingDirectory=/opt/viralclip-reliability
+ExecStart=/opt/viralclip-reliability/.venv/bin/python -I -B -m viralclip.reliability %i
+SuccessExitStatus=1
+TimeoutStartSec=45s
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+MemoryMax=128M
+ProtectSystem=strict
+ProtectHome=true
+PrivateDevices=true
+NoNewPrivileges=true
+RestrictAddressFamilies=AF_UNIX

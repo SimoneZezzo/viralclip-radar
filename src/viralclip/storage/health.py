@@ -88,14 +88,19 @@ def _discovery(
                 GROUP BY s.lane, s.outcome ORDER BY s.lane, s.outcome
                 """,
                 (row["game_id"], since),
-            )
+            ).fetchall()
             lines.extend(f"  {lane} {outcome}: {count}" for lane, outcome, count in outcomes)
-            age = (now - recent).total_seconds() if recent else None
+            age = _age(now, to_utc_iso(recent)) if recent else None
             if age is None or age > max(600, 2 * interval_seconds):
                 severity = CRITICAL if age and age > max(1800, 6 * interval_seconds) else DEGRADED
                 alerts.append((severity, f"{game} recent discovery scan is stale."))
-            if row["errors"]:
-                alerts.append((DEGRADED, f"{game} has recent discovery errors."))
+            incomplete = sum(
+                count for _, outcome, count in outcomes if outcome != "cursor_exhausted"
+            )
+            if incomplete:
+                alerts.append(
+                    (DEGRADED, f"{game} has {incomplete} recent incomplete scan attempts.")
+                )
             continue
         success = row["last_success"]
         watermark = row["watermark"]
@@ -159,6 +164,12 @@ def _jobs(
     )
     if any(row["invalid_due"] for row in rows):
         raise ValueError("invalid job due time")
+    _queue_alerts(oldest_age, failed, exhausted, alerts)
+
+
+def _queue_alerts(
+    oldest_age: float, failed: int, exhausted: int, alerts: list[tuple[int, str]]
+) -> None:
     if oldest_age > 900 or exhausted:
         alerts.append((CRITICAL, "Job overdue over 15m or retry attempts exhausted."))
     elif oldest_age > 300 or failed:
