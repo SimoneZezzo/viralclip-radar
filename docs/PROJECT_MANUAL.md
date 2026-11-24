@@ -134,17 +134,23 @@ La seconda coorte misura il caso d'uso del ranking dal vivo, che ordina solo ci�
 
 ## 7. Contratto del ranking dal vivo
 
-È la priorità di prodotto n. 1 e non è ancora implementata. Ciò che esiste e ciò che manca:
+È la priorità di prodotto n. 1. Il registro è implementato nella demo offline
+con dati sintetici. La valutazione e il ranking su clip reali sono ancora
+da completare.
 
 | Passaggio | Stato |
 | --- | --- |
 | Discovery e osservazioni reali | Implementato. La copertura assoluta resta sconosciuta. |
 | Feature al cutoff | Implementate nel builder offline e riutilizzabili. Il calcolo per singola clip all'istante del cutoff è da progettare. |
-| Score immutabile | Da progettare: modello o regola di fallback, versione dello score, istante della previsione, cutoff, provenienza delle feature. La specifica prevede uno stato `not_trained_yet` quando manca un modello. |
-| Classifica di un pool comparabile | Esiste come replay privato; come classifica per utenti e demo è prevista in M4. |
+| Score immutabile | Implementato su fixture con metodo, versione dello score, istante della previsione, cutoff e provenienza delle feature. La baseline GTA V è registrata come `not_trained_yet`. |
+| Classifica di un pool comparabile | Disponibile nel replay privato e nella pagina della demo sintetica. |
 | Verifica a 24 ore | La raccolta dell'esito esiste. Il collegamento con la previsione registrata va aggiunto senza mai modificare la previsione. |
 
-**Bozza del registro, approvata il 24 novembre 2026.** Da implementare offline con dati sintetici prima di qualsiasi uso dal vivo.
+**Contratto del registro, approvato il 24 novembre 2026.** La demo salva la
+classifica sintetica in un SQLite separato. Ogni esecuzione del metodo è
+sigillata con la dimensione del pool dopo aver inserito le previsioni. La
+pagina legge il registro in sola lettura. Il collegamento degli esiti a
+24 ore è un passaggio successivo.
 
 | Campo | Contenuto |
 | --- | --- |

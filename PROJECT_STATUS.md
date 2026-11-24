@@ -25,7 +25,7 @@ dated samples below is **UNKNOWN**.
 | 1. Reliable 24/7 service | **PARTIAL**. Both collectors and reliability timers are active and enabled at boot. Open: paired 48-hour journal check, reboot rehearsal and cold-start recovery. M1-01 PARTIAL under the off-VPS backup waiver; M1-02 cancelled. |
 | 2. Features, baselines and labels | **PARTIAL**. 2A and 2B implemented. No game has enough admissible mature days for chronological scoring. |
 | 3. Machine learning | Pending validated baselines and enough mature labels. |
-| 4. Open-source demo | Pending synthetic offline demo, presentation and license. |
+| 4. Portfolio demo | Synthetic page and prediction registry implemented locally. Real ranking, authorized Twitch download, reviewer + external editor integration and owner trial remain pending. |
 
 ## Open gates
 
@@ -102,18 +102,15 @@ first signal and the candidate shortlist.
    the November 27 reboot rehearsal.
 3. Audit each new UTC day with `--readiness`, record outages in UTC and keep
    the split boundaries predeclared before reading scores.
-4. Implement the live ranking record approved on November 24 offline with a
-   baseline and synthetic inputs.
-   [Record draft](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
-5. Social track: YouTube Shorts only, observational (owner decision of
-   November 24). Feasibility is a **conditional GO** pending a 3–4 week pilot
-   decided mainly by matching precision and weekly volume. The design complies
-   without an audit: Twitch features, and YouTube total views refreshed at least
-   every 30 days as the label. The Google Cloud project and restricted key exist
-   (owner report); live collection still needs authorization. Automated posting
-   is deferred to future model validation.
-   [Feasibility](docs/YOUTUBE_SHORTS_FEASIBILITY.md) ·
-   [Social track](docs/ACTION_PLAN.md#3-due-binari-paralleli)
+4. The offline ranking register and fixture-based editor page are implemented.
+   The local entry point is `viralclip demo`. The page distinguishes
+   simulated model scores, baseline scores and missing scores.
+   [Ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
+5. With approved access and a cleared clip, test real Twitch download and the
+   reviewer + external editor export while the benchmark cohorts mature. Training and
+   public scoring on historical Twitch data remain subject to terms
+   verification. The owner runs the Shorts trial after delivery. Creator
+   recruitment for training remains deferred until after the demo.
 
 ## Repository and workflow
 

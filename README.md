@@ -1,10 +1,25 @@
 # ViralClip Radar
 
 ViralClip Radar prospectively collects public Twitch clip metadata and actual
-view-count observations. The first milestone is a small local collector; it
-does not download or republish videos, make popularity promises, or reconstruct
-historical view counts. Dashboard and machine-learning work are intentionally
-out of scope until real time-series data has been collected.
+view-count observations. The collector stores metadata and observations at
+their real timestamps. Model validation requires mature chronological cohorts.
+
+## Local portfolio demo
+
+Run `uv run --offline --no-sync viralclip demo` from the checkout and open
+`http://127.0.0.1:8765`. Stop the local server with Ctrl+C.
+
+The page reads a synthetic, append-only ranking register at
+`data/demo/predictions.sqlite3`. GTA VI shows simulated model scores and
+GTA V shows the `latest_views` baseline. The media buttons demonstrate
+synthetic download and a local 9:16 export. **Una scorciatoia di troppo**
+exercises the authorized-file path. **Deriva sulla costa** simulates a
+render failure on the first attempt and allows a retry.
+
+Media processing uses browser Canvas and MediaRecorder. For a supplied
+video, it produces a silent sample of up to four seconds with example
+captions. Source video and generated files stay on the computer. The demo
+uses simulated providers and needs no account or credentials.
 
 ## Quick start (Windows PowerShell)
 

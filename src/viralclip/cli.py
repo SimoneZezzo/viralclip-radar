@@ -14,6 +14,7 @@ from viralclip.benchmark import run_benchmark
 from viralclip.collector.service import Collector
 from viralclip.config import load_settings
 from viralclip.dataset import CUTOFFS, Selection, extract
+from viralclip.demo import run_demo
 from viralclip.evaluation import run_evaluation
 from viralclip.observed_evaluation import MODE as OBSERVED_COHORT
 from viralclip.observed_evaluation import run_observed_evaluation
@@ -39,6 +40,8 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     mode.add_argument("--loop", action="store_true", help="collect continuously until interrupted")
     commands.add_parser("status", help="show local collection status (no credentials required)")
     commands.add_parser("health", help="inspect collector health using read-only SQLite access")
+    demo = commands.add_parser("demo", help="serve the synthetic portfolio demo on this computer")
+    demo.add_argument("--port", type=int, default=8765, help="local HTTP port (default: 8765)")
     # L'estrazione sceglie le clip create dall'inizio incluso alla fine esclusa, in UTC.
     dataset = commands.add_parser("dataset", help="extract point-in-time features and 24h labels")
     dataset.add_argument("--start", required=True, help="inclusive UTC clip creation timestamp")
@@ -93,6 +96,14 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(
         argv
     )  # Legge le parole del comando e le converte in un oggetto con attributi.
+
+    if args.command == "demo":
+        try:
+            run_demo(args.port)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            print(f"Demo failed: {exc}", file=sys.stderr)
+            return 1
+        return 0
 
     if args.command == "evaluate":
         try:

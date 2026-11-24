@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ViralClip Radar · Shortlist Twitch</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="/" aria-label="ViralClip Radar">
+        <span class="brand-mark" aria-hidden="true"><i></i></span>
+        <span>ViralClip<span class="brand-accent"> Radar</span></span>
+      </a>
+      <span class="demo-tag"><i></i> Demo locale · Dati sintetici</span>
+    </div>
+  </header>
+  <main class="shell">
+    <section class="page-intro" aria-labelledby="page-title">
+      <div>
+        <h1 id="page-title">Shortlist Twitch</h1>
+        <p>Esplora la classifica di un gioco e prepara una clip per Shorts.</p>
+      </div>
+      <div class="game-picker">
+        <label for="game">Gioco</label>
+        <select id="game" disabled><option>Caricamento…</option></select>
+      </div>
+    </section>
+    <p id="page-error" class="message error" role="alert" hidden></p>
+    <section class="overview" aria-label="Dettagli della classifica">
+      <div><span>Cutoff</span><strong id="cutoff">—</strong></div>
+      <div><span>Metodo</span><strong id="method">—</strong></div>
+      <div><span>Clip nel pool</span><strong id="pool">—</strong></div>
+      <div><span>Giorno del pool</span><strong id="pool-day">—</strong></div>
+    </section>
+    <div class="workspace">
+      <section class="panel leaderboard" aria-labelledby="ranking-title">
+        <div class="panel-heading">
+          <h2 id="ranking-title">Classifica</h2>
+          <span id="score-header">Score</span>
+        </div>
+        <ul id="ranking" class="ranking" aria-label="Clip ordinate per score"></ul>
+        <p id="ranking-note" class="panel-note"></p>
+      </section>
+      <section id="details" class="panel details" aria-labelledby="details-title" hidden>
+        <div class="panel-heading">
+          <h2 id="details-title">Clip selezionata</h2>
+          <span class="selected-rank" id="selected-rank"></span>
+        </div>
+        <div class="details-inner">
+          <div id="preview" class="preview scene-0">
+            <button id="play" class="play" type="button" aria-label="Riproduci anteprima sintetica">
+              <span aria-hidden="true"></span>
+            </button>
+            <video id="video" controls playsinline hidden aria-label="Anteprima del video"></video>
+            <span id="preview-tag" class="preview-tag">Anteprima sintetica</span>
+          </div>
+          <div class="clip-info">
+            <div>
+              <h3 id="clip-title"></h3>
+              <p id="clip-channel"></p>
+            </div>
+            <span id="duration" class="duration"></span>
+          </div>
+          <dl class="record">
+            <div><dt>Versione</dt><dd id="version"></dd></div>
+            <div><dt>Views osservate</dt><dd id="observed"></dd></div>
+            <div><dt>Cutoff della clip</dt><dd id="prediction"></dd></div>
+          </dl>
+          <div class="actions">
+            <button id="edit" type="button" class="primary">Modifica con reviewer + external editor</button>
+            <button id="download" type="button" class="secondary">↓ &nbsp; Scarica clip</button>
+          </div>
+          <p id="availability" class="availability"></p>
+          <details id="file-panel" class="file-panel">
+            <summary>Usa un file autorizzato</summary>
+            <label for="file">File video locale</label>
+            <input id="file" type="file" accept="video/*">
+            <label class="check"><input id="allowed" type="checkbox"> Ho il permesso di elaborare questo file</label>
+            <p>Il browser elabora in locale fino a 4 secondi, con sottotitoli di esempio.</p>
+          </details>
+          <div id="job-section" class="job" hidden>
+            <p id="job" role="status" aria-live="polite"></p>
+            <a id="export" class="secondary" hidden>↓ &nbsp; Esporta Short simulato</a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

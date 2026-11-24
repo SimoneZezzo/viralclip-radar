@@ -1,0 +1,97 @@
+import json
+import sqlite3
+from contextlib import closing
+from http.client import HTTPConnection
+from http.server import ThreadingHTTPServer
+from threading import Thread
+
+import pytest
+
+from viralclip.cli import main
+from viralclip.collector.service import GTA_VI_GAME_ID
+from viralclip.demo import handler, prepare_registry, read_ranking
+
+
+def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(tmp_path):
+    path = tmp_path / "ranking.sqlite3"
+    prepare_registry(path)
+    model = read_ranking(path, GTA_VI_GAME_ID)
+    baseline = read_ranking(path, "32982")
+    prepare_registry(path)
+    assert read_ranking(path, GTA_VI_GAME_ID) == model
+    assert model["run"]["method"] == "simulated_model"
+    assert baseline["run"]["model_status"] == "not_trained_yet"
+    rows = model["predictions"]
+    assert [row["rank"] for row in rows] == [1, 2, 3, 4, 5, None]
+    assert rows[0]["latest_views"] == 128
+    assert rows[0]["observation_ids"] == [rows[0]["clip_id"] + ":52"]
+    assert rows[0]["latest_observed_at"] < rows[0]["prediction_at"] < model["run"]["scored_at"]
+    assert rows[-1]["score"] is None
+    assert rows[2]["media"] == {"download": False, "edit_original": False, "accept_file": True}
+    assert rows[4]["media"] == {"download": False, "edit_original": False, "accept_file": False}
+    assert [row["score"] for row in baseline["predictions"]] == [98, 79, 45, 22]
+
+    with closing(sqlite3.connect(path)) as db:
+        with pytest.raises(sqlite3.IntegrityError, match="Append-only"):
+            db.execute("UPDATE demo_predictions SET score=1")
+        with pytest.raises(sqlite3.IntegrityError, match="Sealed run"):
+            db.execute(
+                "INSERT OR REPLACE INTO demo_predictions SELECT * FROM demo_predictions LIMIT 1"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="Sealed run"):
+            db.execute(
+                """INSERT INTO demo_predictions
+                   SELECT prediction_id + 100, run_id, 'extra', title, channel, duration, scenario,
+                          scene, prediction_at, score, rank + 100, latest_views, latest_observed_at,
+                          observation_ids FROM demo_predictions LIMIT 1"""
+            )
+
+
+def test_demo_rejects_an_existing_unrelated_database(tmp_path):
+    path = tmp_path / "collector.sqlite3"
+    with closing(sqlite3.connect(path)) as db:
+        db.execute("CREATE TABLE clips (clip_id TEXT PRIMARY KEY)")
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match="another database"):
+        prepare_registry(path)
+    assert path.read_bytes() == original
+
+
+def test_demo_serves_only_supported_games_and_static_assets(tmp_path):
+    path = tmp_path / "ranking.sqlite3"
+    prepare_registry(path)
+    with ThreadingHTTPServer(("127.0.0.1", 0), handler(path)) as server:
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with closing(HTTPConnection("127.0.0.1", server.server_port, timeout=3)) as client:
+                client.request("GET", "/")
+                response = client.getresponse()
+                assert response.status == 200
+                assert b"Modifica con reviewer + external editor" in response.read()
+                client.request("GET", "/gameplay.jpg")
+                response = client.getresponse()
+                assert response.read().startswith(b"\xff\xd8\xff")
+                client.request("GET", "/api/ranking?game_id=32982")
+                response = client.getresponse()
+                assert response.status == 200
+                report = json.loads(response.read())
+                assert report["synthetic"] and report["run"]["game_id"] == "32982"
+                client.request("GET", "/api/ranking?game_id=unknown")
+                response = client.getresponse()
+                response.read()
+                assert response.status == 404
+        finally:
+            server.shutdown()
+            thread.join()
+
+
+def test_demo_cli_does_not_load_collector_settings(monkeypatch):
+    def unexpected_settings():
+        pytest.fail("demo read collector settings")
+
+    calls = []
+    monkeypatch.setattr("viralclip.cli.load_settings", unexpected_settings)
+    monkeypatch.setattr("viralclip.cli.run_demo", calls.append)
+    assert main(["demo", "--port", "8766"]) == 0
+    assert calls == [8766]
