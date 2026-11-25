@@ -30,21 +30,32 @@ def _check_schema(reader: sqlite3.Connection) -> None:
         raise ValueError("Database and checkout must both match approved schema v2")
 
 
-def preflight(database: Path) -> None:
-    """Decline startup if the migrated DB or approved service settings are absent."""
+def preflight(database: Path, game_id: str | None = None) -> None:
+    """Decline startup if the migrated DB or approved service settings are absent.
+
+    Without `game_id` this checks the GTA V collector. With it, a catalog collector must
+    configure exactly that category, keep the GTA V cadence and hold no other game.
+    """
     settings = load_settings()
     if not database.is_file() or database.resolve() != settings.db_path.resolve():
         raise ValueError("The approved database is missing or differs from VIRALCLIP_DB_PATH")
     if not settings.has_twitch_credentials:
         raise ValueError("Twitch credential fields are missing")
-    if settings.game_ids or (
+    expected_ids = (game_id,) if game_id else ()
+    if game_id is not None and not game_id.isdigit():
+        raise ValueError("A catalog game ID must be numeric")
+    if settings.game_ids != expected_ids or (
         settings.discovery_interval_seconds,
         settings.discovery_lookback_minutes,
     ) != (300, 30):
-        raise ValueError("Category IDs, cadence, or lookback differ from the approved GTA V setup")
+        raise ValueError("Category IDs, cadence, or lookback differ from the approved setup")
     with closing(_open_read_only(database)) as reader:
         reader.execute("PRAGMA query_only = ON")
         _check_schema(reader)
+        if game_id is not None:
+            games = {row[0] for row in reader.execute("SELECT game_id FROM games")}
+            if games - {game_id}:
+                raise ValueError("The catalog database holds another game")
         # The transferred backup uses DELETE; the collector enables WAL on startup.
         if reader.execute("PRAGMA journal_mode").fetchone()[0] not in ("delete", "wal"):
             raise ValueError("Expected a standalone transfer or a WAL collector database")
@@ -164,6 +175,8 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("preflight", "manifest", "verify"):
         command = commands.add_parser(name)
         command.add_argument("database", type=Path)
+        if name == "preflight":
+            command.add_argument("--game-id", help="catalog collector category ID")
         if name in ("manifest", "verify"):
             command.add_argument("--expected-game-id", help="approved category ID for this backup")
         if name == "verify":
@@ -171,7 +184,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "preflight":
-            preflight(args.database)
+            preflight(args.database, args.game_id)
             print("Collector settings and existing database passed read-only preflight.")
         elif args.command == "manifest":
             manifest = snapshot_manifest(args.database, expected_game_id=args.expected_game_id)

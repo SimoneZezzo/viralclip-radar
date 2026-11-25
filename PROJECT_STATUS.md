@@ -142,6 +142,11 @@ first signal and the candidate shortlist.
    baseline or c1 it becomes the definitive version) and the static deploy
    (`viralclip publish`, `VITE_STATIC_DATA=1` build, `web/README.md`).
    reviewer's re-review of the c2 fixes is pending (reviewer usage limit).
+   Catalog collectors prepared offline (pending reviewer review, nothing
+   installed): `viralclip-game@<ID>.service`, `game.env.example`, catalog
+   preflight (`viralclip.deployment preflight DB --game-id ID`), reliability
+   profile `vcg-<ID>`, `viralclip probe-volume` and the
+   [catalog runbook](docs/CATALOG_COLLECTORS.md).
 3. Run the authorized November 27 09:00 UTC reboot rehearsal after a fresh
    preflight, following the
    [reboot procedure](docs/M1_RELIABILITY_HARDENING.md#collector-correction-reboot-and-rollback).

@@ -23,7 +23,7 @@ REQUIRED = (
 SOURCES = re.compile(
     r"(?:src/viralclip|tests)/[a-z0-9_/]+\.py|"
     r"deploy/[a-z0-9-]+\.(?:service|timer|sh|env\.example)|"
-    r"deploy/viralclip-reliability@\.(?:service|timer)"
+    r"deploy/viralclip-(?:reliability|game)@\.(?:service|timer)"
 )
 
 

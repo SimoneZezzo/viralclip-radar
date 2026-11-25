@@ -1,0 +1,46 @@
+[Unit]
+# Instance name: the exact numeric Twitch category ID, e.g. viralclip-game@509658.
+Description=ViralClip Radar catalog collector for Twitch category %i
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/etc/viralclip/game-%i-authorized
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=exec
+User=vcg-%i
+Group=vcg-%i
+WorkingDirectory=/opt/viralclip-catalog
+StateDirectory=viralclip-game-%i
+StateDirectoryMode=0700
+UMask=0077
+EnvironmentFile=/etc/viralclip/game-%i.env
+Environment=PYTHON_DOTENV_DISABLED=1
+ExecStartPre=/opt/viralclip-catalog/.venv/bin/python -B -m viralclip.deployment preflight /var/lib/viralclip-game-%i/game.sqlite3 --game-id %i
+ExecStart=/opt/viralclip-catalog/.venv/bin/python -Bu -m viralclip --db /var/lib/viralclip-game-%i/game.sqlite3 collect --game-id %i --loop
+Restart=on-failure
+RestartSec=30s
+KillSignal=SIGINT
+TimeoutStopSec=120s
+StandardOutput=journal
+StandardError=journal
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=200
+Nice=10
+CPUQuota=35%
+IOWeight=20
+MemoryHigh=256M
+MemoryMax=512M
+NoNewPrivileges=true
+CapabilityBoundingSet=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

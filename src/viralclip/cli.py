@@ -103,6 +103,10 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     train.add_argument("--test-start", required=True, help="test start, UTC midnight")
     train.add_argument("--metadata", type=Path, help="c2-metadata CSV enabling exploratory models")
     train.add_argument("--output", required=True, type=Path, help="new Git-ignored directory")
+    probe = commands.add_parser(
+        "probe-volume", help="estimate candidate categories' daily clip volume (Helix, no DB)"
+    )
+    probe.add_argument("--game-id", action="append", required=True, help="Twitch category ID")
     commands.add_parser(
         "publish", help="write static per-game ranking JSON (see `viralclip publish --help`)"
     )
@@ -215,6 +219,35 @@ def main(argv: list[str] | None = None) -> int:
         print(report["status"])
         for reason in report["reasons"]:
             print(reason)
+        return 0
+
+    if args.command == "probe-volume":
+        from viralclip.probe import probe_volume
+
+        settings = load_settings()
+        if not settings.has_twitch_credentials:
+            print("Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET first.", file=sys.stderr)
+            return 2
+        twitch = TwitchClient(settings.client_id or "", settings.client_secret or "")
+        try:
+            for game_id in args.game_id:
+                if not game_id.isdigit():
+                    raise ValueError(f"Category IDs are numeric: {game_id!r}")
+                names = twitch.get_games(game_id=game_id)
+                result = probe_volume(twitch, game_id)
+                name = names[0].get("name", "?") if names else "unknown category"
+                print(
+                    f"{game_id} {name}: ~{result['estimated_clips_per_day']} clips/day "
+                    f"(~{result['estimated_mb_per_day']} MB/day), "
+                    f"{result['distinct_broadcasters_sampled']} broadcasters sampled, "
+                    f"{result['truncated_windows']}/8 windows truncated, "
+                    f"{result['requests']} requests"
+                )
+        except (TwitchAPIError, ValueError) as exc:
+            print(f"Probe failed: {exc}", file=sys.stderr)
+            return 1
+        finally:
+            twitch.close()
         return 0
 
     if args.command == "c2-metadata":

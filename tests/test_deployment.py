@@ -146,3 +146,37 @@ def test_service_preflight_declines_missing_schema_or_changed_configuration(tmp_
             preflight(path)
     finally:
         db.close()
+
+
+def test_catalog_preflight_requires_exactly_its_category(tmp_path, monkeypatch):
+    path = tmp_path / "game.sqlite3"
+    for name, value in {
+        "PYTHON_DOTENV_DISABLED": "1",
+        "VIRALCLIP_DB_PATH": str(path),
+        "TWITCH_CLIENT_ID": "synthetic-id",
+        "TWITCH_CLIENT_SECRET": "synthetic-secret",
+        "DISCOVERY_INTERVAL_SECONDS": "300",
+        "DISCOVERY_LOOKBACK_MINUTES": "30",
+        "VIRALCLIP_GAME_IDS": "509658",
+    }.items():
+        monkeypatch.setenv(name, value)
+    Database(path).close()
+    preflight(path, "509658")  # a fresh database holds no game yet
+    with pytest.raises(ValueError, match="Category IDs"):
+        preflight(path)  # the GTA V check refuses a configured category
+    with pytest.raises(ValueError, match="Category IDs"):
+        preflight(path, "21779")
+    with pytest.raises(ValueError, match="numeric"):
+        preflight(path, "GTA")
+    db = Database(path)
+    try:
+        db.upsert_game("509658", "Synthetic", NOW)
+        preflight(path, "509658")
+        db.upsert_game("21779", "Other", NOW)
+    finally:
+        db.close()
+    with pytest.raises(ValueError, match="another game"):
+        preflight(path, "509658")
+    with pytest.raises(SystemExit) as exit_info:
+        main(["preflight", str(path), "--game-id", "509658"])
+    assert exit_info.value.code == 1

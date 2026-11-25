@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sqlite3
 import stat
 import subprocess
@@ -31,7 +32,25 @@ PROFILES = {
         Path("/var/lib/viralclip-gta-vi/gta-vi.sqlite3"),
     ),
 }
+CATALOG_USER = re.compile(r"vcg-([0-9]+)")
 LOOKBACK = timedelta(minutes=15)
+
+
+def resolve_profile(name: str) -> tuple[str, str, Path]:
+    """Fixed GTA profiles, or a catalog collector whose account is `vcg-<game ID>`."""
+    if name in PROFILES:
+        return PROFILES[name]
+    match = CATALOG_USER.fullmatch(name)
+    if match is None:
+        raise ValueError(f"Unknown reliability profile {name!r}")
+    game_id = match.group(1)
+    return (
+        f"viralclip-game@{game_id}.service",
+        game_id,
+        Path(f"/var/lib/viralclip-game-{game_id}/game.sqlite3"),
+    )
+
+
 OBSERVATION_LIMIT = 16_384
 
 
@@ -237,8 +256,12 @@ def monitor(unit: str, game: str, path: Path) -> tuple[int, list[str]]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile", choices=PROFILES)
-    level, lines = monitor(*PROFILES[parser.parse_args().profile])
+    parser.add_argument("profile", help="viralclip, viralclip-gta-vi or vcg-<game ID>")
+    try:
+        profile = resolve_profile(parser.parse_args().profile)
+    except ValueError as exc:
+        parser.error(str(exc))
+    level, lines = monitor(*profile)
     print(f"Collector reliability: {LEVELS[level]}", flush=True)
     for line in lines:
         print(line)

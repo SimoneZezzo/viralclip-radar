@@ -223,3 +223,13 @@ def test_reader_refuses_writable_mount_before_sqlite_open(monkeypatch, db):
     monkeypatch.setattr(sqlite3, "connect", unexpected_open)
     with pytest.raises((ValueError, OSError)):
         monitor._read(db.path, V, [], [])
+
+
+def test_catalog_profiles_follow_the_collector_account():
+    assert monitor.resolve_profile("viralclip") == monitor.PROFILES["viralclip"]
+    unit, game_id, path = monitor.resolve_profile("vcg-509658")
+    assert (unit, game_id) == ("viralclip-game@509658.service", "509658")
+    assert path.as_posix() == "/var/lib/viralclip-game-509658/game.sqlite3"
+    for name in ("vcg-", "vcg-12a", "viralclip-other", "vcg-1/../2"):
+        with pytest.raises(ValueError, match="Unknown reliability profile"):
+            monitor.resolve_profile(name)

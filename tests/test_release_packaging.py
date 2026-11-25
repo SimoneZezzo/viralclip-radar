@@ -88,6 +88,7 @@ def test_packages_reliability_unit_templates(source_repo, tmp_path):
     units = {
         "deploy/viralclip-reliability@.service": b"[Service]\nType=oneshot\n",
         "deploy/viralclip-reliability@.timer": b"[Timer]\nOnCalendar=*:0/5\n",
+        "deploy/viralclip-game@.service": b"[Service]\nType=exec\n",
     }
     for name, data in units.items():
         (repo / name).write_bytes(data)
