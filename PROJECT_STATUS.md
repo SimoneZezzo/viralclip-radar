@@ -147,6 +147,11 @@ first signal and the candidate shortlist.
    preflight (`viralclip.deployment preflight DB --game-id ID`), reliability
    profile `vcg-<ID>`, `viralclip probe-volume` and the
    [catalog runbook](docs/CATALOG_COLLECTORS.md).
+   Twitch applications (owner, November 25): GTA V and GTA VI credentials
+   live in their `/etc/viralclip/*.env` files on the VPS and in the owner's
+   password manager; one new application (catalog 1) is created and kept in
+   the owner's password manager, not yet installed anywhere. Further
+   applications are created one per additional game.
 3. Run the authorized November 27 09:00 UTC reboot rehearsal after a fresh
    preflight, following the
    [reboot procedure](docs/M1_RELIABILITY_HARDENING.md#collector-correction-reboot-and-rollback).
