@@ -188,14 +188,13 @@ first signal and the candidate shortlist.
 Agents declare multi-file work here before starting and remove it when done,
 per the [collaboration rules](docs/REVIEW_INTEGRATION.md#collaborazione-fra-reviewer-e-reviewer).
 
-**reviewer review of `674bd0d..6e93055` (2026-11-25): CHANGES NEEDED.** The c2
-re-review and the catalog collector review are done; the catalog preflight (P1) and probe saturation (P2)
-findings are fixed and closed. reviewer is fixing the open c2 findings with
-reviewer review: future outcomes in the exploratory broadcaster prior, sealed
-metadata coverage of test clips, c2 selection on benchmark-excluded days, c2
-scores outside 60 minutes. Then: atomic `publish` update (also affects item 3)
-and ACTION_PLAN c2 text.
-[Review](docs/PROJECT_HISTORY.md#2026-11-25-reviewer-review-of-the-november-25-work)
+**reviewer review of `674bd0d..6e93055` (2026-11-25): CHANGES NEEDED, mostly
+fixed.** Catalog preflight, probe saturation and the four c2 findings are fixed
+and closed after reviewer re-review
+([review](docs/PROJECT_HISTORY.md#2026-11-25-reviewer-review-of-the-november-25-work),
+[c2 fixes](docs/PROJECT_HISTORY.md#2026-11-25-c2-review-findings-fixed)).
+Open: atomic `publish` update (P2, also affects item 1 below) and the
+ACTION_PLAN c2 text (P3).
 
 **Still pending:**
 

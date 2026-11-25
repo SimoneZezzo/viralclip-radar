@@ -298,7 +298,7 @@ def run_benchmark(
     cohort: str,
     version: str = VERSION,
     extend: Callable[[Frozen], Frozen] | None = None,
-    annotate: Callable[[dict], None] | None = None,
+    annotate: Callable[[dict, Inputs], None] | None = None,
 ) -> dict:
     validate_split_boundaries(validation_start, test_start)
     output = ignored_output(output)
@@ -355,7 +355,7 @@ def run_benchmark(
             "never_discovered_clips": "UNKNOWN",
         }
         if annotate is not None:
-            annotate(report)
+            annotate(report, inputs)  # outcomes already read and verified above
         write_json(directory / "evaluation.json", report)
         write_json(
             directory / "manifest.json",

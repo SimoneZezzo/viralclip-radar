@@ -9,7 +9,7 @@ from random import Random
 from statistics import mean
 
 from viralclip.benchmark import KS, RESAMPLES, SEED, Frozen, interval, run_benchmark
-from viralclip.evaluation import BASELINES, rank_candidates
+from viralclip.evaluation import BASELINES, Inputs, rank_candidates
 
 VERSION = "c1-v1"
 SCORE_VERSION = "c1:staleness-projection:v1"
@@ -55,7 +55,7 @@ def add_c1(frozen: Frozen) -> Frozen:
     return extended
 
 
-def compare_with_strongest(report: dict) -> None:
+def compare_with_strongest(report: dict, _inputs: Inputs | None = None) -> None:
     """Secondary c1 comparison: paired test difference against the best validation baseline."""
     for block in report["by_cutoff_minutes"].values():
         if not block["metrics"]:

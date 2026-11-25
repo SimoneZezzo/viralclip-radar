@@ -13,16 +13,17 @@ ML libraries are imported lazily because collector installs do not ship them.
 from __future__ import annotations
 
 import csv
+import io
 import json
 import pickle
 import sqlite3
 import subprocess
 from bisect import bisect_left, bisect_right
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import replace
 from datetime import datetime, timedelta
 from hashlib import sha256
-from math import copysign, log1p, nan
+from math import copysign, inf, log1p, nan
 from pathlib import Path
 from statistics import mean
 
@@ -34,6 +35,8 @@ from viralclip.evaluation import (
     DAY,
     MATURITY,
     MIN_POOL,
+    Inputs,
+    _day_is_covered,
     rank_candidates,
     read_candidate_exports,
     read_export_outcomes,
@@ -62,6 +65,8 @@ SAFE = (
 EXPLORATORY = (*SAFE, "duration_seconds", "is_english", "broadcaster_prior", "broadcaster_clips")
 FEATURE_SETS = {"safe": SAFE, "exploratory": EXPLORATORY}
 MODELS = ("ridge", "xgboost", "lightgbm", "mlp")
+# 2: point-in-time broadcaster prior (2026-11-25); older sealed artifacts must be retrained.
+ARTIFACT_SCHEMA = 2
 
 
 def export_metadata(database: Path, output: Path) -> int:
@@ -91,11 +96,13 @@ def export_metadata(database: Path, output: Path) -> int:
     return len(rows)
 
 
-def read_metadata(path: Path | None) -> dict[str, dict]:
+def read_metadata(path: Path | None) -> tuple[dict[str, dict], str | None]:
+    """Parse and hash the same bytes, so a report's hash names what was actually used."""
     if path is None:
-        return {}
-    with path.open(encoding="utf-8", newline="") as stream:
-        return {row["clip_id"]: row for row in csv.DictReader(stream)}
+        return {}, None
+    raw = path.read_bytes()
+    rows = csv.DictReader(io.StringIO(raw.decode("utf-8"), newline=""))
+    return {row["clip_id"]: row for row in rows}, sha256(raw).hexdigest()
 
 
 def _number(value: str | None) -> float | None:
@@ -162,22 +169,42 @@ def add_activity(rows) -> None:
         row["category_activity"] = count - own
 
 
+def _series(items: list[tuple[datetime, float]]) -> tuple[list[datetime], list[float]]:
+    items.sort()
+    sums = [0.0]
+    for _, label in items:
+        sums.append(sums[-1] + label)
+    return [instant for instant, _ in items], sums
+
+
 def broadcaster_priors(rows: list[dict], metadata: dict[str, dict]) -> dict:
-    """Shrunk mean log 24-hour views per broadcaster from labeled training rows."""
-    totals: dict[str, list[float]] = defaultdict(lambda: [0.0, 0])
+    """Log 24-hour views of labeled training rows, indexed by when each label matured.
+
+    A row's prior then sums only labels known at its own prediction time, so a training
+    row never sees its own or a later outcome.
+    """
+    overall, tokens = [], defaultdict(list)
     for row in rows:
+        known = (row["created"] + MATURITY, log1p(row["views_24h"]))
+        overall.append(known)
         token = metadata.get(row["clip_id"], {}).get("broadcaster")
         if token:
-            totals[token][0] += log1p(row["views_24h"])
-            totals[token][1] += 1
-    labels = [log1p(row["views_24h"]) for row in rows]
-    return {"overall": (sum(labels), len(labels)), "totals": dict(totals)}
+            tokens[token].append(known)
+    return {
+        "overall": _series(overall),
+        "tokens": {token: _series(items) for token, items in tokens.items()},
+    }
+
+
+def _known(series: tuple[list[datetime], list[float]], instant: datetime) -> tuple[float, int]:
+    count = bisect_right(series[0], instant)
+    return series[1][count], count
 
 
 def feature_vector(
-    row: dict, names: tuple[str, ...], metadata: dict[str, dict], priors: dict, *, own=False
+    row: dict, names: tuple[str, ...], metadata: dict[str, dict], priors: dict
 ) -> list[float]:
-    """Features known at the row's cutoff; `own` removes the row's label from its prior."""
+    """Features known at the row's cutoff; the prior uses only labels matured by then."""
     views, rate, staleness = (
         row["latest_views"],
         row["growth_views_per_minute"],
@@ -185,14 +212,10 @@ def feature_vector(
     )
     projected = c1_score(views, rate, staleness)
     meta = metadata.get(row["clip_id"], {})
-    total, count = priors.get("totals", {}).get(meta.get("broadcaster") or "", (0.0, 0))
-    grand, size = priors.get("overall", (0.0, 0))
-    if own and row["views_24h"] is not None:
-        # Leave-one-out: the row's own label leaves both its broadcaster and the global mean.
-        label = log1p(row["views_24h"])
-        grand, size = grand - label, size - 1
-        if count:
-            total, count = total - label, count - 1
+    empty = ([], [0.0])
+    token = meta.get("broadcaster") or ""
+    total, count = _known(priors.get("tokens", {}).get(token, empty), row["prediction"])
+    grand, size = _known(priors.get("overall", empty), row["prediction"])
     overall = grand / size if size else 0.0
     values = {
         "log1p_latest_views": log1p(views) if views is not None else nan,
@@ -267,7 +290,7 @@ def _model(name: str):
 def _fit(name: str, rows: list[dict], names, metadata, priors):
     model = _model(name)
     model.fit(
-        [feature_vector(row, names, metadata, priors, own=True) for row in rows],
+        [feature_vector(row, names, metadata, priors) for row in rows],
         [log1p(row["views_24h"]) for row in rows],
     )
     return model
@@ -282,6 +305,13 @@ def _predict(model, rows: list[dict], names, metadata, priors) -> list[float]:
     ]
 
 
+def _validation_scores(model, rows: list[dict], names, metadata, priors) -> list[float]:
+    """Unscored clips (missing observations) rank last, as in the benchmark."""
+    eligible = [row for row in rows if row["eligible"]]
+    scores = iter(_predict(model, eligible, names, metadata, priors))
+    return [next(scores) if row["eligible"] else -inf for row in rows]
+
+
 def top_overlap(scored: list[tuple[float, int, str]], k: int = 50) -> float | None:
     """Benchmark T1 tie rule: share of the true top-k (ties included) in the predicted top-k."""
     if len(scored) < MIN_POOL:
@@ -293,18 +323,44 @@ def top_overlap(scored: list[tuple[float, int, str]], k: int = 50) -> float | No
     return len(relevant.intersection(top)) / size
 
 
+def discriminates(pool: list[tuple[int, bool]], k: int) -> bool:
+    """Whether reordering the scorable clips of a (views, scorable) pool can change top-k.
+
+    Unscorable clips rank last, so the overlap moves only when more than k clips are
+    scorable and they include clips both inside and outside the tied true top-k.
+    """
+    if len(pool) <= k or sum(scorable for _, scorable in pool) <= k:
+        return False
+    threshold = sorted((views for views, _ in pool), reverse=True)[k - 1]
+    inside = {views >= threshold for views, scorable in pool if scorable}
+    return inside == {True, False}
+
+
+def _pools(rows: list[dict]) -> dict[tuple[str, datetime], list[dict]]:
+    pools: dict[tuple[str, datetime], list[dict]] = defaultdict(list)
+    for row in rows:
+        pools[row["game_id"], row["day"]].append(row)
+    return pools
+
+
 def informative_k(rows: list[dict]) -> int | None:
-    """Top-50 when some daily pool exceeds 50 labels, else top-10; None without evidence."""
-    sizes = Counter((row["game_id"], row["day"]) for row in rows).values()
-    return next((k for k in (50, 10) if any(size > k for size in sizes)), None)
+    """Top-50 when some daily pool can discriminate at 50, else top-10; None otherwise."""
+    pools = [
+        [(row["views_24h"], row["eligible"]) for row in pool] for pool in _pools(rows).values()
+    ]
+    return next((k for k in (50, 10) if any(discriminates(pool, k) for pool in pools)), None)
 
 
 def _daily_overlap(rows: list[dict], scores: list[float], k: int) -> float | None:
-    """Mean daily top-k overlap over pools larger than k, where overlap can discriminate."""
+    """Mean daily top-k overlap over the pools where overlap can discriminate."""
     pools: dict[tuple[str, datetime], list] = defaultdict(list)
     for row, score in zip(rows, scores, strict=True):
         pools[row["game_id"], row["day"]].append((score, row["views_24h"], row["clip_id"]))
-    values = [top_overlap(pool, k) for pool in pools.values() if len(pool) > k]
+    values = [
+        top_overlap(pool, k)
+        for pool in pools.values()
+        if discriminates([(views, score > -inf) for score, views, _ in pool], k)
+    ]
     return mean(values) if values else None
 
 
@@ -329,25 +385,45 @@ def train_c2(
     if any(export.window.end > test_start for export in exports):
         raise ValueError("Training exports must end by the test start")
     read_export_outcomes(inputs, exports)
-    meta = read_metadata(metadata)
+    meta, metadata_sha256 = read_metadata(metadata)
     labeled = []
     for row in load_rows(directories).values():
         outcome = inputs.outcomes.get(row["clip_id"])
         if (
             row["cutoff"] == CUTOFF
-            and row["eligible"]
             and row["game_id"] in game_ids
             and outcome is not None
             and outcome.status == "valid"
         ):
             labeled.append(row | {"views_24h": outcome.views})
     labeled.sort(key=lambda row: (row["created"], row["clip_id"]))
+    # Outage days are left out of training, as the benchmark leaves them out of its calendar.
     train = [row for row in labeled if row["day"] + DAY + MATURITY <= validation_start]
+    train_excluded = sorted(
+        (game, day)
+        for game, day in _pools(train)
+        if not _day_is_covered(day, game, inputs.windows, validation_start)
+    )
+    train = [
+        row
+        for row in train
+        if row["eligible"] and (row["game_id"], row["day"]) not in train_excluded
+    ]
+    # Validation pools keep labeled clips without features, ranked last, like the benchmark.
     validation = [
         row
         for row in labeled
         if validation_start <= row["day"] and row["day"] + DAY + MATURITY <= test_start
     ]
+    # Select only on validation days the benchmark itself would admit.
+    excluded = sorted(
+        (game, day)
+        for (game, day), pool in _pools(validation).items()
+        if not _day_is_covered(day, game, inputs.windows, test_start)
+        or len(pool) < MIN_POOL
+        or len({row["views_24h"] for row in pool}) < 2
+    )
+    validation = [row for row in validation if (row["game_id"], row["day"]) not in excluded]
     k = informative_k(validation)
     if not train or k is None:
         raise ValueError("Training needs matured train rows and a validation pool above 10 labels")
@@ -359,7 +435,7 @@ def train_c2(
             model = _fit(model_name, train, names, meta, priors)
             fitted[f"{set_name}:{model_name}"] = model
             overlap = _daily_overlap(
-                validation, _predict(model, validation, names, meta, priors), k
+                validation, _validation_scores(model, validation, names, meta, priors), k
             )
             selection.append(
                 {"features": set_name, "model": model_name, "validation_overlap": overlap}
@@ -372,22 +448,34 @@ def train_c2(
     ]
     decision = {
         "evaluation_version": VERSION,
+        "artifact_schema": ARTIFACT_SCHEMA,
         "game_ids": list(game_ids),
         "cutoff_minutes": CUTOFF,
         "validation_start": validation_start.isoformat(),
         "test_start": test_start.isoformat(),
         "selection_k": k,
         "selected": winners[0],
-        "metadata_sha256": sha256(metadata.read_bytes()).hexdigest() if metadata else None,
+        "metadata_sha256": metadata_sha256,
     }
     output.mkdir(parents=True)
     payload = pickle.dumps({"models": fitted, "priors": priors, "sets": sets, "decision": decision})
     (output / "models.pkl").write_bytes(payload)
     manifest = decision | {
         "train_rows": len(train),
+        "train_days_excluded": [
+            {"game_id": game, "day_utc": day.date().isoformat()} for game, day in train_excluded
+        ],
         "validation_rows": len(validation),
+        "validation_days_excluded": [
+            {"game_id": game, "day_utc": day.date().isoformat()} for game, day in excluded
+        ],
         "validation_latest_views_overlap": _daily_overlap(
-            validation, [row["latest_views"] for row in validation], k
+            validation,
+            [
+                row["latest_views"] if row["eligible"] and row["latest_views"] is not None else -inf
+                for row in validation
+            ],
+            k,
         ),
         "selection": selection,
         "selection_ties": winners,
@@ -409,36 +497,49 @@ def load_models(directory: Path) -> tuple[dict, dict]:
     if sha256(payload).hexdigest() != manifest["models_sha256"]:
         raise ValueError("The sealed models do not match their manifest")
     sealed = pickle.loads(payload)  # local artifact whose hash was just verified
+    if sealed["decision"].get("artifact_schema") != ARTIFACT_SCHEMA:
+        raise ValueError("This sealed c2 artifact predates the current schema; retrain it")
     if any(manifest.get(key) != value for key, value in sealed["decision"].items()):
         raise ValueError("The manifest decision fields differ from the sealed models")
     return manifest, sealed
 
 
-def add_models(directories: list[Path], model_dir: Path, metadata: Path | None):
+def _split(day: datetime, manifest: dict) -> str:
+    if day < datetime.fromisoformat(manifest["validation_start"]):
+        return "train"
+    return "validation" if day < datetime.fromisoformat(manifest["test_start"]) else "test"
+
+
+def add_models(
+    directories: list[Path], model_dir: Path, metadata: Path | None, game_id: str, cohort: str
+):
     """Benchmark hooks that append c1, the selected c2 and every zoo model, then annotate.
 
     Only candidate features are read here; outcomes stay closed until the orders freeze.
+    The broadcaster prior is sealed with the models, so the evaluation metadata file may be
+    a later export that also covers the test clips; its hash and coverage are reported.
     """
     manifest, sealed = load_models(model_dir)
-    meta = read_metadata(metadata)
+    meta, evaluation_sha256 = read_metadata(metadata)
     expected = sealed["decision"]["metadata_sha256"]
-    if expected and (metadata is None or sha256(metadata.read_bytes()).hexdigest() != expected):
-        raise ValueError("The exploratory models need the exact --metadata file they used")
+    if expected and metadata is None:
+        raise ValueError("The exploratory models need a --metadata file")
     rows = load_rows(directories)
-    focal = [row for row in rows.values() if row["cutoff"] == CUTOFF]
-    coverage = sum(row["clip_id"] in meta for row in focal) / len(focal) if focal else 0.0
-    if expected and not coverage:
-        raise ValueError("The metadata file covers no candidate clip")
+    found: dict[datetime, list[tuple[str, bool]]] = defaultdict(list)
+    coverage: dict[str, float | None] = {}
     names = [manifest["selected"], *sealed["models"]]
     methods = [METHOD, *(f"{METHOD}:{name}" for name in sealed["models"])]
 
     def extend(frozen: Frozen) -> Frozen:
         extended = add_c1(frozen)
         for key, orders in extended.items():
+            if key[1] != CUTOFF:  # the models were trained on 60-minute features only
+                continue
             pool = orders[C1]
             width = len(pool[0].scores)
             ready = [row for row in pool if rows[row.clip_id, row.cutoff]["eligible"]]
             features = [rows[row.clip_id, row.cutoff] for row in ready]
+            found[key[0]] += [(row.clip_id, row.clip_id in meta) for row in ready]
             scores: dict[str, list[float | None]] = {}
             for name in dict.fromkeys(names):
                 set_name = name.split(":")[0]
@@ -462,14 +563,46 @@ def add_models(directories: list[Path], model_dir: Path, metadata: Path | None):
             for offset, method in enumerate(methods):
                 result[method] = rank_candidates(rescored, width + offset)
             extended[key] = result
+        # Coverage of the clips c2 actually scores in this cohort, per sealed split.
+        for split in ("train", "validation", "test"):
+            values = [
+                hit
+                for day, hits in found.items()
+                if _split(day, manifest) == split
+                for _, hit in hits
+            ]
+            coverage[split] = mean(values) if values else None
+        if expected and not coverage["test"]:
+            raise ValueError("The metadata file covers no scored test candidate clip")
         return extended
 
-    def annotate(report: dict) -> None:
+    def annotate(report: dict, inputs: Inputs) -> None:
+        # Coverage on the clips the test metrics measure: scored, validly labeled (in the
+        # cohort) and on an admitted test day, from the benchmark's own verified outcomes.
+        # A failure here discards the benchmark's staged report.
+        admitted = {
+            row["day_utc"]
+            for row in report["by_cutoff_minutes"][CUTOFF]["days"]
+            if row["split"] == "test" and not row["exclusions"]
+        }
+        values = [
+            hit
+            for day, hits in found.items()
+            if day.date().isoformat() in admitted
+            for clip_id, hit in hits
+            if (outcome := inputs.outcomes.get(clip_id)) is not None
+            and outcome.status == "valid"
+            and (cohort != "primary" or clip_id in inputs.primary_clips)
+        ]
+        coverage["test_measured"] = mean(values) if values else None
+        if expected and admitted and not coverage["test_measured"]:
+            raise ValueError("The metadata file covers no measured clip on an admitted test day")
         report["c2_model"] = {
             "selected": manifest["selected"],
             "selection_ties": manifest["selection_ties"],
             "models_sha256": manifest["models_sha256"],
             "metadata_sha256": expected,
+            "evaluation_metadata_sha256": evaluation_sha256,
             "metadata_coverage_at_cutoff": coverage,
             "exploratory_assumption": manifest["exploratory_assumption"],
             "trained_cutoff_minutes": CUTOFF,
@@ -506,7 +639,7 @@ def run_c2(
     )
     if boundaries != (manifest["validation_start"], manifest["test_start"]):
         raise ValueError("The c2 evaluation must use the boundaries the models were sealed for")
-    extend, annotate = add_models(directories, model_dir, metadata)
+    extend, annotate = add_models(directories, model_dir, metadata, game_id, cohort)
     return run_benchmark(
         directories,
         output,
