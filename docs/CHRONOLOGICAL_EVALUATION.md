@@ -193,6 +193,88 @@ change because `latest_views` is already in the candidates. Use a seeded
 including ties at the K-th value, pools smaller than K, missing scores and
 unlabeled clips among the first K.
 
+## Challenger protocol c1
+
+**Status.** Frozen on 2026-11-25, before validation starts on 2026-11-28
+at 00:00 UTC. The evaluation version is `c1-v1`. The live registry score
+version is `c1:staleness-projection:v1`.
+[Action plan §5bis](ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti).
+
+**Score.** Use only the benchmark-v1 candidate from export 2a.3. Project
+the latest view count to the cutoff using the export's first-to-latest
+`growth_views_per_minute`. The score has no fitted parameters.
+
+```text
+staleness_seconds = cutoff_minutes * 60 - latest_observation_age_seconds
+score = max(0, latest_views + growth_views_per_minute * staleness_seconds / 60)
+```
+
+Staleness is the elapsed time in seconds from `latest_observed_at` to
+`prediction_at`. With one eligible observation there is no rate, so use
+`latest_views`. With no eligible observation (`missing_observations`), keep
+the clip in the pool without a score. As in `rank_candidates` in
+`src/viralclip/evaluation.py`, rank higher scores first, put missing
+scores last and break ties by ascending clip ID.
+
+**Runner.** `viralclip evaluate --protocol c1-v1 --game-id ID` adds c1 as
+the fifth ranked method alongside the four baselines. Reuse benchmark-v1
+candidate selection, pools, label rules, maturity and embargo, day exclusions
+and metrics. Freeze `recommendations.csv` and `frozen_orders.json` before
+reading outcomes. Use the same paired 95% percentile bootstrap of daily
+differences (2,000 UTC-day resamples, seed `20261124`). Benchmark-v1
+reports remain byte-for-byte unchanged and contain only the four baselines.
+
+**GTA VI decision.** The primary endpoint is T1 top-50 overlap for
+`views_24h` at strict 60 minutes in the `observed-at-cutoff` cohort.
+Use the formal benchmark-v1 calendar, boundaries and day replacement rule
+above. Require at least 7/3/7 admissible train/validation/test days and
+at least 500 valid test labels. A win requires the lower bound of the
+paired 95% test interval for c1 minus `latest_views` to exceed zero.
+
+For each cutoff and K, choose the baseline with the highest validation
+macro mean of `views_24h` top-K overlap. The runner writes the secondary
+comparison under `by_cutoff_minutes.<cutoff>.c1_vs_strongest_validation_baseline.<K>`.
+It reports the paired test-day difference for c1 minus that baseline and
+its 95% interval using the same seed and resamples. The preliminary 2/2/2
+calendar completes December 5 at 00:05 UTC if all days are admissible.
+That run checks the mechanism only and cannot change c1.
+
+**Catalog games.** Every evaluated game other than GTA VI, including GTA V,
+is an unseen-game test. These games take no part in choosing c1. For each
+game, predeclare a 2/2/7 calendar starting at its first full UTC collection
+day. For GTA V, the 2/2/7 calendar starts at 2026-11-24 00:00 UTC, the
+same start as GTA VI, while for a newly collected game it starts on the
+first full UTC collection day after its collector goes live.
+Use the first two admissible UTC creation days for train. The runner
+requires them and c1 fits nothing. After the 24h05m embargo, use the next
+two admissible days for validation, solely to select the strongest baseline
+for the secondary comparison. After the same embargo, use the next seven
+admissible days for test. Fix the boundaries before reading any score and
+move them forward only when a day is excluded. End the export's creation
+window at the UTC midnight following the seventh test day. Use the
+observed-at-cutoff cohort at strict 60 minutes. Each day needs at least
+10 valid labels and the usual benchmark-v1 checks.
+
+Report T1 top-50 overlap. If the median daily labeled pool size across the
+seven test days is 50 or fewer, top-50 is uninformative. Still report it and
+use top-10 overlap as that game's decision endpoint. Alongside the labeled
+overlap, report `frozen_overlap` at the selected K, counting unlabeled
+frozen recommendations as misses.
+
+For each game, use the paired 95% interval for c1 minus `latest_views` on
+its decision endpoint. A lower bound above zero is a win. An upper bound
+below zero is a loss. All other intervals are inconclusive. Report every
+game, including losses and inconclusive results. Benchmark-v1 formal status
+requires 7/3/7 days and 500 valid test labels. The runner may report
+`MECHANISM ONLY`. The catalog rule governs the c1 claim for that game
+using the paired interval from its seven test days.
+
+**Launch and scope.** Use c1 for a game's public ranking only after a win
+under its applicable rule. Otherwise use the declared `latest_views`
+baseline. The score estimates views at the cutoff. It supplies neither a
+probability nor evidence of learned-model performance. Coverage of clips
+the radar never discovered is **UNKNOWN**.
+
 ## Research readiness and GTA V retirement
 
 The 2026-11-21 read-only audit counted valid labels on four UTC dates for

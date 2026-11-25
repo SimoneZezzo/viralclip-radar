@@ -128,7 +128,11 @@ first signal and the candidate shortlist.
    collector on the legacy path if authorized; public static deploy late
    December or early January. Metadata capture, Get Streams and chat are
    deferred; VPS-3 only when needed; Twitch authorization assumed until the
-   legal reply.
+   legal reply. **c1 frozen on November 25** (`c1-v1`,
+   [protocol](docs/CHRONOLOGICAL_EVALUATION.md#challenger-protocol-c1)):
+   `viralclip evaluate --protocol c1-v1 --game-id ID`; benchmark-v1
+   artifacts unchanged. Catalog games use a 2/2/7 calendar; for a game
+   going live on November 28 the earliest c1 result is about December 12.
 3. Run the authorized November 27 09:00 UTC reboot rehearsal after a fresh
    preflight, following the
    [reboot procedure](docs/M1_RELIABILITY_HARDENING.md#collector-correction-reboot-and-rollback).

@@ -396,3 +396,43 @@ def test_observed_cli_rejects_rehashed_timestamp_leak_and_missing_outcome_row(wo
     assert result.returncode == 1
     assert "Incomplete clip, cutoff or outcome keys" in result.stderr
     assert not output.exists()
+
+
+def test_c1_cli_adds_a_fifth_method_without_changing_benchmark_v1(workspace):
+    source = make_export(workspace, "c1-source", top_label=500, game="42")
+    reference = workspace / "data" / "benchmark"
+    challenger = workspace / "data" / "c1"
+    for output, protocol in ((reference, "benchmark-v1"), (challenger, "c1-v1")):
+        result = cli(source, output, "--protocol", protocol, "--game-id", "42")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.splitlines()[0] == "MECHANISM ONLY"
+    report = load_report(challenger)
+    manifest = json.loads((challenger / "manifest.json").read_text(encoding="utf-8"))
+    assert report["benchmark_protocol"] == manifest["evaluation_version"] == "c1-v1"
+    assert load_report(reference)["benchmark_protocol"] == "benchmark-v1"
+    test = report["by_cutoff_minutes"]["60"]["metrics"]["test"]["views_24h"]["50"]["overlap"]
+    assert set(test["methods"]) == {
+        "latest_views",
+        "observed_growth",
+        "growth_rate",
+        "age_normalized_views",
+        "c1",
+    }
+    assert "paired_ci95" in test["methods"]["c1"]
+    secondary = report["by_cutoff_minutes"]["60"]["c1_vs_strongest_validation_baseline"]["50"]
+    assert secondary["baseline"] in set(test["methods"]) - {"c1"}
+    assert secondary["days"] == 2
+    assert len(secondary["paired_ci95"]) == 2
+    with (challenger / "recommendations.csv").open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    with (reference / "recommendations.csv").open(encoding="utf-8", newline="") as stream:
+        baseline_rows = list(csv.DictReader(stream))
+    assert [row for row in rows if row["baseline"] != "c1"] == baseline_rows
+    # Pinned against the benchmark-v1 code before c1 existed (commit 1eb1416).
+    expected = {
+        "recommendations.csv": "0984fee1448c6abc4647261341a66f93df72fc2ed07029152247f7e8d641b95b",
+        "frozen_orders.json": "d4b95c4407324261410dfed850277bf6f56c06d766760c0ebabe8ccff9955c39",
+    }
+    for name, digest in expected.items():
+        assert sha256((reference / name).read_bytes()).hexdigest() == digest
+    assert any(row["baseline"] == "c1" for row in rows)

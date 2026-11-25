@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from collections import defaultdict
+from collections.abc import Callable
 from datetime import datetime
 from hashlib import sha256
 from math import log1p
@@ -172,7 +173,7 @@ def summarize(pools: list[dict], metric: str, *, formal_test: bool) -> dict:
     samples = [rng.choices(range(days), k=days) for _ in range(RESAMPLES)]
     reference = [pool["methods"]["latest_views"][metric] for pool in pools]
     methods = {}
-    for method in BASELINES:
+    for method in pools[0]["methods"]:
         values = [pool["methods"][method][metric] for pool in pools]
         differences = [value - base for value, base in zip(values, reference, strict=True)]
         paired_ci = interval(differences, samples)
@@ -295,6 +296,9 @@ def run_benchmark(
     *,
     game_id: str,
     cohort: str,
+    version: str = VERSION,
+    extend: Callable[[Frozen], Frozen] | None = None,
+    annotate: Callable[[dict], None] | None = None,
 ) -> dict:
     validate_split_boundaries(validation_start, test_start)
     output = ignored_output(output)
@@ -302,8 +306,10 @@ def run_benchmark(
     if not any(game_id in export.window.games for export in exports):
         raise ValueError(f"No input export covers game {game_id}")
     frozen = freeze(inputs, game_id, cohort)
+    if extend is not None:
+        frozen = extend(frozen)
     settings = {
-        "benchmark_protocol": VERSION,
+        "benchmark_protocol": version,
         "cohort": cohort,
         "game_id": game_id,
         "validation_start": validation_start.isoformat() if validation_start else None,
@@ -348,11 +354,13 @@ def run_benchmark(
             "by_cutoff_minutes": cutoffs,
             "never_discovered_clips": "UNKNOWN",
         }
+        if annotate is not None:
+            annotate(report)
         write_json(directory / "evaluation.json", report)
         write_json(
             directory / "manifest.json",
             {
-                "evaluation_version": VERSION,
+                "evaluation_version": version,
                 "settings": settings,
                 "datasets": inputs.fingerprints,
                 "status": status,

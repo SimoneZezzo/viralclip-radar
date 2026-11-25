@@ -11,6 +11,8 @@ from pathlib import Path
 
 from viralclip.benchmark import VERSION as BENCHMARK_PROTOCOL
 from viralclip.benchmark import run_benchmark
+from viralclip.challenger import VERSION as C1_PROTOCOL
+from viralclip.challenger import run_c1
 from viralclip.collector.service import Collector
 from viralclip.config import load_settings
 from viralclip.dataset import CUTOFFS, Selection, extract
@@ -71,14 +73,16 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     evaluation.add_argument(
         "--cohort",
         choices=("primary", OBSERVED_COHORT),
-        help="evaluation cohort (default: primary, or observed-at-cutoff for benchmark-v1)",
+        help="evaluation cohort (default: primary, or observed-at-cutoff for benchmark-v1 and c1-v1)",
     )
     evaluation.add_argument("--validation-start", help="validation start at UTC midnight")
     evaluation.add_argument("--test-start", help="test start at UTC midnight")
     evaluation.add_argument(
-        "--protocol", choices=(BENCHMARK_PROTOCOL,), help="select the versioned benchmark"
+        "--protocol",
+        choices=(BENCHMARK_PROTOCOL, C1_PROTOCOL),
+        help="select the versioned benchmark or the c1 challenger",
     )
-    evaluation.add_argument("--game-id", help="exact category ID for benchmark-v1")
+    evaluation.add_argument("--game-id", help="exact category ID for benchmark-v1 or c1-v1")
     evaluation.add_argument("--k", type=int, default=10, help="maximum size of the top ranks")
     evaluation.add_argument(
         "--output", required=True, type=Path, help="new Git-ignored report directory"
@@ -149,12 +153,13 @@ def main(argv: list[str] | None = None) -> int:
                 parse_utc(args.validation_start) if args.validation_start is not None else None
             )
             test_start = parse_utc(args.test_start) if args.test_start is not None else None
-            if args.protocol == BENCHMARK_PROTOCOL:
+            if args.protocol in (BENCHMARK_PROTOCOL, C1_PROTOCOL):
                 if not args.game_id:
-                    raise ValueError("Benchmark v1 requires --game-id")
+                    raise ValueError(f"{args.protocol} requires --game-id")
                 if args.k != 10:
-                    raise ValueError("Benchmark v1 uses fixed K values of 10 and 50")
-                report = run_benchmark(
+                    raise ValueError(f"{args.protocol} uses fixed K values of 10 and 50")
+                runner = run_c1 if args.protocol == C1_PROTOCOL else run_benchmark
+                report = runner(
                     args.datasets,
                     args.output,
                     validation_start,
@@ -164,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 if args.game_id is not None:
-                    raise ValueError("--game-id requires --protocol benchmark-v1")
+                    raise ValueError("--game-id requires --protocol benchmark-v1 or c1-v1")
                 evaluate_cohort = (
                     run_observed_evaluation if args.cohort == OBSERVED_COHORT else run_evaluation
                 )
