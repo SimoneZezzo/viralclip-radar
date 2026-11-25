@@ -200,8 +200,10 @@ its usage limit; the owner asked that reviewer find everything ready):**
    the first catalog deployment after the November 27 rehearsal.
 3. Design review of [live publishing](docs/LIVE_PUBLISHING.md) (top 200
    recorded, rolling 24-hour pool, 15-minute refresh, Cloudflare R2).
-4. First-game choice from the November 25 volume probe
-   ([evidence](docs/PROJECT_HISTORY.md#2026-11-25-candidate-category-volume-probe)).
+4. Owner-approved catalog order (November 25): Fortnite (`33214`) first,
+   then VALORANT (`516575`), then League of Legends (`21779`), one at a
+   time after the November 27 rehearsal, each with its own Twitch
+   application ([volume probe](docs/PROJECT_HISTORY.md#2026-11-25-candidate-category-volume-probe)).
 
 - None.
 
