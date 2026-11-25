@@ -217,6 +217,12 @@ reviewer re-checks the November 25 work on November 29: range `6e93055..2ab958a`
 (catalog preflight and probe, c2 fixes, publishing with immutable names,
 the R2 uploader, the reboot evidence script and the runbook updates).
 
+**Fortnite (33214) staged on November 25, not started:** credentials,
+runtime `/opt/viralclip-catalog` (release `92815068a96b`), account, database
+and a passing preflight are in place; the unit is installed and started
+after the November 27 reboot rehearsal (scheduled).
+[Staging](docs/PROJECT_HISTORY.md#2026-11-25-fortnite-collector-staged-not-started)
+
 **Still pending:**
 
 1. Design review of [live publishing](docs/LIVE_PUBLISHING.md) (top 200

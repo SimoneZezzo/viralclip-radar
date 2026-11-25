@@ -67,7 +67,20 @@ sudo -n systemctl enable --now "viralclip-game@$ID.service"
 ```
 
 `game.env` is the filled template, prepared in the session from a secure
-input and removed afterwards. The unit's preflight refuses a missing database,
+input and removed afterwards. A PowerShell pipe adds a byte-order mark and a
+final CR: strip them (`sudo -n sed -i '1s/^ï»¿//; s/$//' FILE`)
+and check the two credential lines with `grep -c`, never by printing them.
+Before enabling the unit, the same preflight can run as a transient unit
+with the service's user and environment:
+
+```bash
+sudo -n systemd-run --quiet --wait --pipe --collect -p User="vcg-$ID" -p Group="vcg-$ID"     -p EnvironmentFile="/etc/viralclip/game-$ID.env" -p Environment=PYTHON_DOTENV_DISABLED=1     -p WorkingDirectory=/opt/viralclip-catalog /opt/viralclip-catalog/.venv/bin/python -B     -m viralclip.deployment preflight "/var/lib/viralclip-game-$ID/game.sqlite3" --game-id "$ID"
+```
+
+The release ships tests whose dev scripts it leaves out
+(`tests/test_peer_review.py`, `tests/test_verify_parsers.py` and one
+`verify_offline` test in `tests/test_predictions.py`); they fail on the VPS
+by design of the allowlist and do not cover the collector. The unit's preflight refuses a missing database,
 missing credentials, any other category, a changed cadence or a database that
 holds another game.
 
