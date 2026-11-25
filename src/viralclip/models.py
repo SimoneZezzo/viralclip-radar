@@ -61,7 +61,7 @@ SAFE = (
 )
 EXPLORATORY = (*SAFE, "duration_seconds", "is_english", "broadcaster_prior", "broadcaster_clips")
 FEATURE_SETS = {"safe": SAFE, "exploratory": EXPLORATORY}
-MODELS = ("ridge", "xgboost", "lightgbm")
+MODELS = ("ridge", "xgboost", "lightgbm", "mlp")
 
 
 def export_metadata(database: Path, output: Path) -> int:
@@ -215,14 +215,27 @@ def feature_vector(
 
 
 def _model(name: str):
-    if name == "ridge":
+    if name in ("ridge", "mlp"):
         from sklearn.impute import SimpleImputer
         from sklearn.linear_model import Ridge
+        from sklearn.neural_network import MLPRegressor
         from sklearn.pipeline import make_pipeline
         from sklearn.preprocessing import StandardScaler
 
+        # A small feed-forward network for comparison; early stopping limits overfitting.
+        estimator = (
+            Ridge()
+            if name == "ridge"
+            else MLPRegressor(
+                hidden_layer_sizes=(32, 16),
+                alpha=1e-3,
+                early_stopping=True,
+                max_iter=2000,
+                random_state=SEED,
+            )
+        )
         return make_pipeline(
-            SimpleImputer(strategy="median", keep_empty_features=True), StandardScaler(), Ridge()
+            SimpleImputer(strategy="median", keep_empty_features=True), StandardScaler(), estimator
         )
     if name == "xgboost":
         from xgboost import XGBRegressor

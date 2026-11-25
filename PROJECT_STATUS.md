@@ -136,7 +136,8 @@ first signal and the candidate shortlist.
    VPS-3 is offered in the OVH panel (owner, November 25); upgrade after
    December 16 when the disk forecast requires it. Offline tooling ready on
    synthetic data: c2 model comparison (`c2-metadata`, `c2-train`,
-   `evaluate --protocol c2-v1`; ridge, XGBoost, LightGBM on safe and
+   `evaluate --protocol c2-v1`; ridge, XGBoost, LightGBM and a small
+   scikit-learn neural network (MLP) on safe and
    exploratory features; owner: if the exploratory variant beats the
    baseline or c1 it becomes the definitive version) and the static deploy
    (`viralclip publish`, `VITE_STATIC_DATA=1` build, `web/README.md`).

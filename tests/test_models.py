@@ -53,14 +53,14 @@ def sealed(tmp_path_factory, request):
 
 def test_training_compares_the_zoo_on_validation_and_seals_it(sealed):
     *_, model, manifest = sealed
-    assert len(manifest["selection"]) == 6
+    assert len(manifest["selection"]) == 8
     assert {item["features"] for item in manifest["selection"]} == {"safe", "exploratory"}
     assert manifest["selected"] in manifest["selection_ties"]
     assert manifest["selection_k"] == 50
     assert manifest["exploratory_assumption"] and manifest["metadata_sha256"]
     loaded, models = load_models(model)
     assert set(models["models"]) == {
-        f"{s}:{m}" for s in ("safe", "exploratory") for m in ("ridge", "xgboost", "lightgbm")
+        f"{s}:{m}" for s in ("safe", "exploratory") for m in ("ridge", "xgboost", "lightgbm", "mlp")
     }
     assert loaded == manifest
 
@@ -84,7 +84,7 @@ def test_c2_evaluation_reports_every_model_against_baseline_and_c1(sealed):
     assert report["c2_model"]["metadata_coverage_at_cutoff"] == 1
     block = report["by_cutoff_minutes"]["60"]
     methods = block["metrics"]["test"]["views_24h"]["50"]["overlap"]["methods"]
-    assert {"latest_views", "c1", "c2", "c2:safe:ridge", "c2:exploratory:xgboost"} <= set(methods)
+    assert {"latest_views", "c1", "c2", "c2:safe:ridge", "c2:exploratory:mlp"} <= set(methods)
     for reference in ("latest_views", "c1"):
         assert block[f"c2_vs_{reference}"]["50"]["days"] == 2
     assert "c2_vs_c1" not in report["by_cutoff_minutes"]["30"]
