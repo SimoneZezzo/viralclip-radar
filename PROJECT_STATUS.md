@@ -213,7 +213,7 @@ production; scheduled for 08:00 UTC. November 25 matures November 27 00:05.
 evidence script and pre-reboot baseline, Fortnite prerequisites checked
 read-only, December run rehearsed on synthetic data
 ([details](docs/PROJECT_HISTORY.md#2026-11-25-preparation-for-the-reboot-fortnite-and-the-december-run)).
-reviewer re-checks the November 25 work on November 29: range `6e93055..HEAD` (as of the November 25 evening commit)
+reviewer re-checks the November 25 work on November 29: range `6e93055..6adcf74`
 (catalog preflight and probe, c2 fixes, publishing with immutable names,
 the R2 uploader, the reboot evidence script, the runbook updates and the
 Fortnite staging record).
