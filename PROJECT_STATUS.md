@@ -188,10 +188,10 @@ first signal and the candidate shortlist.
 Agents declare multi-file work here before starting and remove it when done,
 per the [collaboration rules](docs/REVIEW_INTEGRATION.md#collaborazione-fra-reviewer-e-reviewer).
 
-**reviewer review of `674bd0d..6e93055` (2026-11-25): all eight findings fixed**
-after reviewer re-review and a final check. Pending: reviewer's confirmation of the
-last publishing changes (grace period, Windows cleanup, index reload), at its
-usage limit until November 29
+**reviewer review of `674bd0d..6e93055` (2026-11-25): all eight findings fixed
+and closed** after reviewer re-review and a final check; reviewer reviewed the last
+publishing changes in reviewer's stead (owner, reviewer at its usage limit until
+November 29)
 ([review](docs/PROJECT_HISTORY.md#2026-11-25-reviewer-review-of-the-november-25-work),
 [c2 fixes](docs/PROJECT_HISTORY.md#2026-11-25-c2-review-findings-fixed),
 [publishing fixes](docs/PROJECT_HISTORY.md#2026-11-25-static-publishing-and-plan-fixes)).
