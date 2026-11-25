@@ -47,8 +47,15 @@ not need those rows: c1 and c2 rebuild full orders from sealed exports.
 - Accounts and permissions: the GTA V database is `0600` for its service
   user. Run one ranking unit per game as that game's collector account with
   a per-game registry, then a publisher account that reads the registries?
-- Upload client: `boto3` in a separate publisher venv, `rclone`, or
-  Cloudflare's `wrangler`? Collector installs must stay unchanged.
+- Upload client: **decided, `boto3`** (owner, November 25). Implemented
+  offline in `src/viralclip/r2.py` (`python -m viralclip.r2 --source
+  DIR/rankings --bucket NAME`) and tested with an in-memory client; not yet
+  run against R2. boto3 is imported lazily and installed only in the
+  publisher environment, so collector installs stay unchanged. Credentials
+  come from `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`
+  ([template](../deploy/r2.env.example)). Game files are sent with a one-year
+  immutable cache, the index with `no-cache`. Wiring it to a timer waits
+  for the domain and the owner's go-ahead.
 - Disk: about 29 MB/day for five games at 15-minute refreshes (estimate).
 - Live timeliness: report how many ranked clips already have a 24-hour
   outcome observed at scoring time (none should, in a 24-hour window).

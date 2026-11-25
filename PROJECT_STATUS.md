@@ -71,6 +71,14 @@ experiment and reproducibility gates are met.
 
 ## Latest production evidence
 
+- **November 25, 14:31 UTC.** Owner-authorized read-only `health` over SSH:
+  both collectors HEALTHY, 0 operational errors in the last hour, 0
+  execution failures. GTA V: 68,278 clips, discovery 74 s old, 2 overdue
+  jobs (max 2.2 s). GTA VI: 812,656 clips, 22 overdue jobs (max 5.6 s),
+  coverage uncertified, 60m early coverage 92.9%. Both services active with
+  0 restarts, both reliability timers firing; 29 GB of 38 GB free (data
+  directories: GTA V 709 MB, GTA VI 3.9 GB).
+  [Health check](docs/PROJECT_HISTORY.md#2026-11-25-read-only-health-check-and-r2-uploader)
 - **November 25, 08:44 UTC.** Read-only disk check: 29 GB of 38 GB
   available; GTA VI database 3.2 GB growing about 0.6 GB/day, total about
   0.63–0.66 GB/day, so the disk fills in early January 2027 without action.
