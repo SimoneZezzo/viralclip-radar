@@ -28,7 +28,7 @@ export default function App() {
 
   return (
     <>
-      <TopBar synthetic={data?.synthetic ?? true} />
+      <TopBar synthetic={data?.synthetic ?? false} />
       <main className="mx-auto max-w-[1264px] px-[clamp(16px,4vw,48px)] pb-12">
         <section
           className="mt-[42px] mb-[26px] flex items-end justify-between gap-[18px] max-sm:mt-[25px] max-sm:mb-4 max-sm:flex-col max-sm:items-stretch"

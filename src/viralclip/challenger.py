@@ -65,28 +65,33 @@ def compare_with_strongest(report: dict) -> None:
             if not validation:
                 continue
             strongest = max(BASELINES, key=lambda method: validation[method]["macro_mean"])
-            daily = [
-                day["metrics"]["views_24h"][k]["methods"]
-                for day in block["days"]
-                if day["split"] == "test" and "metrics" in day
-            ]
-            differences = [
-                methods[METHOD]["overlap"] - methods[strongest]["overlap"]
-                for methods in daily
-                if methods["latest_views"]["overlap"] is not None
-            ]
-            if not differences:
-                continue
-            rng = Random(SEED)
-            samples = [
-                rng.choices(range(len(differences)), k=len(differences)) for _ in range(RESAMPLES)
-            ]
-            block.setdefault("c1_vs_strongest_validation_baseline", {})[k] = {
-                "baseline": strongest,
-                "days": len(differences),
-                "paired_difference": mean(differences),
-                "paired_ci95": interval(differences, samples),
-            }
+            paired = paired_test_difference(block, k, METHOD, strongest)
+            if paired is not None:
+                block.setdefault("c1_vs_strongest_validation_baseline", {})[k] = {
+                    "baseline": strongest
+                } | paired
+
+
+def paired_test_difference(block: dict, k: int, method: str, reference: str) -> dict | None:
+    """Paired day-bootstrap of `method - reference` top-K overlap over a cutoff's test days."""
+    differences = [
+        methods[method]["overlap"] - methods[reference]["overlap"]
+        for methods in (
+            day["metrics"]["views_24h"][k]["methods"]
+            for day in block["days"]
+            if day["split"] == "test" and "metrics" in day
+        )
+        if methods["latest_views"]["overlap"] is not None
+    ]
+    if not differences:
+        return None
+    rng = Random(SEED)
+    samples = [rng.choices(range(len(differences)), k=len(differences)) for _ in range(RESAMPLES)]
+    return {
+        "days": len(differences),
+        "paired_difference": mean(differences),
+        "paired_ci95": interval(differences, samples),
+    }
 
 
 def run_c1(

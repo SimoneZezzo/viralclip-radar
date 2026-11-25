@@ -16,3 +16,4 @@ export const formatNumber = (value: number) => number.format(value);
 export const formatPoolDay = (value: string) =>
   day.format(new Date(value + "T00:00:00Z")) + " (UTC)";
 export const formatClock = (value: string) => clock.format(new Date(value)) + " UTC";
+export const formatTimestamp = (value: string) => day.format(new Date(value)) + " " + formatClock(value);

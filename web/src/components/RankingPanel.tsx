@@ -37,9 +37,10 @@ export function RankingPanel({ run, predictions, selectedId, onSelect }: Props) 
                 aria-controls="details"
                 onClick={() => onSelect(clip)}
                 className={[
-                  "grid min-h-[69px] w-full cursor-pointer grid-cols-[25px_70px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-2 text-left text-ink",
-                  "max-md:grid-cols-[18px_45px_minmax(0,1fr)_auto] max-md:gap-1.5",
-                  "max-sm:min-h-[57px] max-sm:grid-cols-[21px_58px_minmax(0,1fr)_auto]",
+                  "grid min-h-[69px] w-full cursor-pointer items-center gap-3 rounded-lg border p-2 text-left text-ink max-md:gap-1.5 max-sm:min-h-[57px]",
+                  clip.scene === undefined
+                    ? "grid-cols-[25px_minmax(0,1fr)_auto]"
+                    : "grid-cols-[25px_70px_minmax(0,1fr)_auto] max-md:grid-cols-[18px_45px_minmax(0,1fr)_auto] max-sm:grid-cols-[21px_58px_minmax(0,1fr)_auto]",
                   pressed
                     ? "border-hairline-accent bg-surface-3"
                     : "border-transparent bg-transparent hover:bg-surface-2",
@@ -48,15 +49,19 @@ export function RankingPanel({ run, predictions, selectedId, onSelect }: Props) 
                 <span className="text-center text-[0.89rem] font-bold text-[#d4dec7] tabular-nums">
                   {clip.rank ?? "—"}
                 </span>
-                <span
-                  className={`artwork thumb scene-${clip.scene} h-[42px] rounded-[5px] max-md:h-8`}
-                  aria-hidden="true"
-                />
+                {clip.scene !== undefined && (
+                  <span
+                    className={`artwork thumb scene-${clip.scene} h-[42px] rounded-[5px] max-md:h-8`}
+                    aria-hidden="true"
+                  />
+                )}
                 <span className="overflow-hidden">
-                  <span className="block truncate text-[0.9rem] font-semibold">{clip.title}</span>
-                  <span className="mt-[3px] block truncate text-[0.77rem] text-ink-subtle">
-                    @{clip.channel}
-                  </span>
+                  <span className="block truncate text-[0.9rem] font-semibold">{clip.title || clip.clip_id}</span>
+                  {clip.channel && (
+                    <span className="mt-[3px] block truncate text-[0.77rem] text-ink-subtle">
+                      @{clip.channel}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`min-w-[39px] text-center text-[0.89rem] font-bold tabular-nums ${
@@ -70,6 +75,9 @@ export function RankingPanel({ run, predictions, selectedId, onSelect }: Props) 
           );
         })}
       </ul>
+      {run && predictions.length === 0 && (
+        <p className="px-4 text-ink-subtle">No clips received a score in this pool.</p>
+      )}
       {note && (
         <p className="m-0 border-t border-hairline px-4 py-3 text-[0.78rem] leading-[1.45] text-ink-subtle">
           {note}

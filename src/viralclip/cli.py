@@ -17,6 +17,8 @@ from viralclip.collector.service import Collector
 from viralclip.config import load_settings
 from viralclip.dataset import CUTOFFS, Selection, extract
 from viralclip.evaluation import run_evaluation
+from viralclip.models import VERSION as C2_PROTOCOL
+from viralclip.models import export_metadata, run_c2, train_c2
 from viralclip.observed_evaluation import MODE as OBSERVED_COHORT
 from viralclip.observed_evaluation import run_observed_evaluation
 from viralclip.predictions import ignored_registry, link_outcomes, rank_pool, shortlist
@@ -73,19 +75,36 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     evaluation.add_argument(
         "--cohort",
         choices=("primary", OBSERVED_COHORT),
-        help="evaluation cohort (default: primary, or observed-at-cutoff for benchmark-v1 and c1-v1)",
+        help="evaluation cohort (default: primary, or observed-at-cutoff for versioned protocols)",
     )
     evaluation.add_argument("--validation-start", help="validation start at UTC midnight")
     evaluation.add_argument("--test-start", help="test start at UTC midnight")
     evaluation.add_argument(
         "--protocol",
-        choices=(BENCHMARK_PROTOCOL, C1_PROTOCOL),
-        help="select the versioned benchmark or the c1 challenger",
+        choices=(BENCHMARK_PROTOCOL, C1_PROTOCOL, C2_PROTOCOL),
+        help="select the versioned benchmark or a challenger (c1, c2)",
     )
-    evaluation.add_argument("--game-id", help="exact category ID for benchmark-v1 or c1-v1")
+    evaluation.add_argument("--game-id", help="exact category ID for a versioned protocol")
+    evaluation.add_argument("--model", type=Path, help="sealed c2 model directory (c2-v1)")
+    evaluation.add_argument("--metadata", type=Path, help="c2 metadata CSV for exploratory models")
     evaluation.add_argument("--k", type=int, default=10, help="maximum size of the top ranks")
     evaluation.add_argument(
         "--output", required=True, type=Path, help="new Git-ignored report directory"
+    )
+    metadata = commands.add_parser(
+        "c2-metadata", help="copy clip metadata for exploratory c2 models from a sealed copy"
+    )
+    metadata.add_argument("--source", required=True, type=Path, help="sealed collector database")
+    metadata.add_argument("--output", required=True, type=Path, help="new CSV path")
+    train = commands.add_parser("c2-train", help="fit, select and seal the c2 model comparison")
+    train.add_argument("datasets", nargs="+", type=Path, help="dataset artifact directories")
+    train.add_argument("--game-id", action="append", required=True, help="training game ID")
+    train.add_argument("--validation-start", required=True, help="validation start, UTC midnight")
+    train.add_argument("--test-start", required=True, help="test start, UTC midnight")
+    train.add_argument("--metadata", type=Path, help="c2-metadata CSV enabling exploratory models")
+    train.add_argument("--output", required=True, type=Path, help="new Git-ignored directory")
+    commands.add_parser(
+        "publish", help="write static per-game ranking JSON (see `viralclip publish --help`)"
     )
     rank = commands.add_parser("rank", help="record a baseline ranking for one pool at its cutoff")
     rank.add_argument("--registry", required=True, type=Path, help="Git-ignored registry path")
@@ -127,6 +146,11 @@ def _print_status(database: Database) -> None:
 
 # La funzione principale legge le parole del comando, esegue l'operazione e restituisce un numero intero come codice di uscita.
 def main(argv: list[str] | None = None) -> int:
+    arguments = sys.argv[1:] if argv is None else argv
+    if arguments[:1] == ["publish"]:
+        from viralclip.publish import main as publish
+
+        return publish(arguments[1:])
     args = _parser().parse_args(
         argv
     )  # Legge le parole del comando e le converte in un oggetto con attributi.
@@ -153,12 +177,20 @@ def main(argv: list[str] | None = None) -> int:
                 parse_utc(args.validation_start) if args.validation_start is not None else None
             )
             test_start = parse_utc(args.test_start) if args.test_start is not None else None
-            if args.protocol in (BENCHMARK_PROTOCOL, C1_PROTOCOL):
+            if (args.model or args.metadata) and args.protocol != C2_PROTOCOL:
+                raise ValueError("--model and --metadata require --protocol c2-v1")
+            if args.protocol in (BENCHMARK_PROTOCOL, C1_PROTOCOL, C2_PROTOCOL):
                 if not args.game_id:
                     raise ValueError(f"{args.protocol} requires --game-id")
                 if args.k != 10:
                     raise ValueError(f"{args.protocol} uses fixed K values of 10 and 50")
+                options = {}
                 runner = run_c1 if args.protocol == C1_PROTOCOL else run_benchmark
+                if args.protocol == C2_PROTOCOL:
+                    if args.model is None:
+                        raise ValueError("c2-v1 requires --model")
+                    runner = run_c2
+                    options = {"model_dir": args.model, "metadata": args.metadata}
                 report = runner(
                     args.datasets,
                     args.output,
@@ -166,22 +198,55 @@ def main(argv: list[str] | None = None) -> int:
                     test_start,
                     game_id=args.game_id,
                     cohort=args.cohort or OBSERVED_COHORT,
+                    **options,
                 )
             else:
                 if args.game_id is not None:
-                    raise ValueError("--game-id requires --protocol benchmark-v1 or c1-v1")
+                    raise ValueError("--game-id requires a versioned --protocol")
                 evaluate_cohort = (
                     run_observed_evaluation if args.cohort == OBSERVED_COHORT else run_evaluation
                 )
                 report = evaluate_cohort(
                     args.datasets, args.output, validation_start, test_start, args.k
                 )
-        except (KeyError, TypeError, ValueError, OSError) as exc:
+        except (KeyError, TypeError, ValueError, OSError, ImportError) as exc:
             print(f"Evaluation failed: {exc}", file=sys.stderr)
             return 1
         print(report["status"])
         for reason in report["reasons"]:
             print(reason)
+        return 0
+
+    if args.command == "c2-metadata":
+        try:
+            count = export_metadata(args.source, args.output)
+        except (ValueError, OSError, sqlite3.Error) as exc:
+            print(f"Metadata export failed: {exc}", file=sys.stderr)
+            return 1
+        print(f"Wrote metadata for {count} clips")
+        return 0
+
+    if args.command == "c2-train":
+        try:
+            manifest = train_c2(
+                args.datasets,
+                args.output,
+                parse_utc(args.validation_start),
+                parse_utc(args.test_start),
+                game_ids=tuple(args.game_id),
+                metadata=args.metadata,
+            )
+        except (KeyError, TypeError, ValueError, OSError, ImportError) as exc:
+            print(f"Training failed: {exc}", file=sys.stderr)
+            return 1
+        k = manifest["selection_k"]
+        print(f"Selected {manifest['selected']} (validation top-{k} overlap)")
+        for item in manifest["selection"]:
+            overlap = item["validation_overlap"]
+            shown = "n/a" if overlap is None else f"{overlap:.3f}"
+            print(f"{item['features']}:{item['model']} {shown}")
+        baseline = manifest["validation_latest_views_overlap"]
+        print(f"latest_views {'n/a' if baseline is None else f'{baseline:.3f}'}")
         return 0
 
     if args.command == "synthetic-dry-run":

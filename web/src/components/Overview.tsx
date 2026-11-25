@@ -1,10 +1,12 @@
 import type { RankingRun } from "../api.ts";
-import { formatNumber, formatPoolDay } from "../format.ts";
+import { formatNumber, formatPoolDay, formatTimestamp } from "../format.ts";
 
 export function Overview({ run }: { run?: RankingRun }) {
   const items: [string, string][] = [
     ["Cutoff", run ? run.cutoff_minutes + " min" : "—"],
-    ["Method", run ? (run.method === "baseline" ? "Baseline" : "Simulated model") : "—"],
+    ["Method", run?.method_label ?? (
+      run?.method === "baseline" ? "Baseline" : run?.method === "simulated_model" ? "Simulated model" : "—"
+    )],
     ["Clips in pool", run ? formatNumber(run.pool_size) : "—"],
     ["Pool date", run ? formatPoolDay(run.pool_day) : "—"],
   ];
@@ -27,6 +29,12 @@ export function Overview({ run }: { run?: RankingRun }) {
           <strong className="block text-[0.92rem] font-semibold tabular-nums">{value}</strong>
         </div>
       ))}
+      {run?.published_at && (
+        <p className="col-span-full m-0 border-t border-hairline px-[17px] py-2 text-[0.76rem] text-ink-subtle">
+          Scored <time dateTime={run.scored_at}>{formatTimestamp(run.scored_at)}</time>
+          {" · Published "}<time dateTime={run.published_at}>{formatTimestamp(run.published_at)}</time>
+        </p>
+      )}
     </section>
   );
 }

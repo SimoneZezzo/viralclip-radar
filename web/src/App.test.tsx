@@ -7,15 +7,10 @@ import App from "./App.tsx";
 
 function clip(overrides: Partial<Prediction>): Prediction {
   return {
-    prediction_id: 1,
     clip_id: "demo-1",
     prediction_at: "2026-11-22T19:04:00.000000Z",
-    scored_at: "2026-11-24T10:00:00.000000Z",
-    feature_status: "eligible",
     score: 100,
     rank: 1,
-    latest_observed_at: "2026-11-22T18:56:00.000000Z",
-    observation_ids: [1],
     title: "Overpass getaway",
     channel: "neon_driver",
     duration: 28,
@@ -38,12 +33,10 @@ function ranking(gameId: string, method: "baseline" | "simulated_model", clips: 
       { name: "CapCut", url: "https://www.capcut.com/" },
     ],
     run: {
-      run_id: "fixture:" + gameId,
       game_id: gameId,
       pool_day: "2026-11-22",
       cutoff_minutes: 60,
       scored_at: "2026-11-24T10:00:00.000000Z",
-      source_watermark: "2026-11-22T19:28:00.000000Z",
       score_version: method === "baseline" ? "baseline:latest_views:v1" : "fixture:potential:v3",
       model_status: method === "baseline" ? "not_trained_yet" : "simulated",
       pool_size: clips.length,
@@ -55,10 +48,10 @@ function ranking(gameId: string, method: "baseline" | "simulated_model", clips: 
 
 const gtaVi = ranking("1867279146", "simulated_model", [
   clip({}),
-  clip({ prediction_id: 2, clip_id: "demo-2", title: "One last lap", score: null, rank: null }),
+  clip({ clip_id: "demo-2", title: "One last lap", score: null, rank: null }),
 ]);
 const gtaV = ranking("32982", "baseline", [
-  clip({ prediction_id: 3, clip_id: "v-1", title: "Rooftop landing", channel: "roof_runner" }),
+  clip({ clip_id: "v-1", title: "Rooftop landing", channel: "roof_runner" }),
 ]);
 
 function renderApp() {
@@ -86,6 +79,7 @@ describe("Twitch Shortlist", () => {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("ranks clips, selects the top clip and shows missing scores as a dash", async () => {
@@ -151,5 +145,39 @@ describe("Twitch Shortlist", () => {
     fetchMock.mockResolvedValue(new Response("", { status: 500 }));
     renderApp();
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the ranking");
+  });
+
+  it("uses the static index to select games and displays their published records", async () => {
+    vi.stubEnv("VITE_STATIC_DATA", "1");
+    vi.stubEnv("BASE_URL", "/portfolio/");
+    const user = userEvent.setup();
+    const base = "/portfolio/rankings/";
+    const games = [{ id: "42", name: "First game" }, { id: "43", name: "Second game" }];
+    const method = "latest_views baseline · no validated model for this game";
+    fetchMock.mockImplementation(async (path: string) => {
+      if (path === base + "index.json") return Response.json({ games });
+      const game = games.find(({ id }) => path === base + id + ".json");
+      if (!game) return new Response("", { status: 404 });
+      const url = game.id === "43" ? "https://clips.twitch.tv/StoredSlug" : null;
+      return Response.json({
+        ...gtaV.run, game_id: game.id, method_label: method, synthetic: false,
+        published_at: "2026-11-25T09:00:00Z",
+        clips: [{ rank: 1, score: 100, clip_id: "StoredSlug", title: null, url,
+          prediction_at: "2026-11-24T10:00:00Z" }],
+      });
+    });
+    renderApp();
+    expect(await screen.findByText(method)).toBeVisible();
+    expect(screen.getByText("25 Nov 2026 09:00 UTC")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "StoredSlug" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Copy clip link" })).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("registry has no clip link");
+    await user.selectOptions(screen.getByRole("combobox"), "43");
+    expect(await screen.findByRole("link", { name: "Open on Twitch" })).toHaveAttribute(
+      "href", "https://clips.twitch.tv/StoredSlug",
+    );
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      base + "index.json", base + "42.json", base + "index.json", base + "43.json",
+    ]);
   });
 });
