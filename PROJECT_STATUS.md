@@ -216,6 +216,9 @@ November 24 using the existing a subscription login and network access.
 See the [review workflow](docs/REVIEW_INTEGRATION.md)
 for the current sharing scope and synthetic acceptance probe.
 
+At deployment the code is published as a clean GitHub copy with no tool
+references, code only; commits carry no tool attribution lines from November 25
+(owner decision; [action plan §7](docs/ACTION_PLAN.md#7-decisioni-richieste-al-titolare)).
 The code is MIT-licensed (owner decision, November 24); Twitch data,
 derivatives and models stay private. Development continues on local `main`; the
 `docs/benchmark-protocol-and-plan` branch was fast-forwarded into it on
