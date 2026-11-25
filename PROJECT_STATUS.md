@@ -1,6 +1,6 @@
 # Project status and session handoff
 
-Last updated 2026-11-24 (Europe/Rome). This file holds only the current state,
+Last updated 2026-11-25 (Europe/Rome). This file holds only the current state,
 open gates and next actions. Past results live in the
 [evidence log](docs/PROJECT_HISTORY.md#evidence-log). How the system works is in
 the [project manual](docs/PROJECT_MANUAL.md). Live production state beyond the
@@ -71,6 +71,13 @@ experiment and reproducibility gates are met.
 
 ## Latest production evidence
 
+- **November 25, 08:44 UTC.** Read-only disk check: 29 GB of 38 GB
+  available; GTA VI database 3.2 GB growing about 0.6 GB/day, total about
+  0.63–0.66 GB/day, so the disk fills in early January 2027 without action.
+  The formal capture to December 16 fits. Owner decision: upgrade to VPS-3
+  only when the forecast requires it; check daily growth after each new
+  category.
+  [Disk check](docs/PROJECT_HISTORY.md#2026-11-25-feature-and-generalization-plan-approved)
 - **November 24, 16:27 UTC.** A read-only `health` run over SSH reported
   both collectors HEALTHY. GTA V: discovery 41 s old, 0 overdue jobs, 0
   operational errors in the last hour. GTA VI: 63 overdue jobs (oldest
@@ -113,12 +120,21 @@ first signal and the candidate shortlist.
    real 2/2/2 mechanism run awaits admissible cohorts; the formal 7/3/7
    benchmark and model adoption remain separate gates.
    [Protocol v1](docs/CHRONOLOGICAL_EVALUATION.md#benchmark-protocol-v1)
-2. Run the authorized November 27 09:00 UTC reboot rehearsal after a fresh
+2. Feature and generalization plan approved on November 25
+   ([ACTION_PLAN §5bis](docs/ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti)):
+   simplified the same day for a portfolio project (beat the baseline,
+   several games at launch, a few hundred to about 1k users). Freeze
+   challenger c1 by November 27; after the reboot rehearsal, one new non-GTA
+   collector on the legacy path if authorized; public static deploy late
+   December or early January. Metadata capture, Get Streams and chat are
+   deferred; VPS-3 only when needed; Twitch authorization assumed until the
+   legal reply.
+3. Run the authorized November 27 09:00 UTC reboot rehearsal after a fresh
    preflight, following the
    [reboot procedure](docs/M1_RELIABILITY_HARDENING.md#collector-correction-reboot-and-rollback).
-3. Audit each new UTC day with `--readiness`, record outages in UTC and keep
+4. Audit each new UTC day with `--readiness`, record outages in UTC and keep
    the split boundaries predeclared before reading scores.
-4. The offline ranking register and fixture-based editor page are implemented.
+5. The offline ranking register and fixture-based editor page are implemented.
    The local entry point is `viralclip demo`. The page distinguishes
    simulated model scores, baseline scores and missing scores. The UI is
    in English and shows a relative 1–100 score for each ranked clip.
@@ -129,7 +145,7 @@ first signal and the candidate shortlist.
    outcome linking end to end on synthetic data; it returned
    `MECHANISM ONLY` on the 2/2/2 calendar as expected.
    [Ranking contract](docs/PROJECT_MANUAL.md#7-contratto-del-ranking-dal-vivo)
-5. Version 1: the owner tests a cleared clip's Twitch link in an external
+6. Version 1: the owner tests a cleared clip's Twitch link in an external
    editor (external editor on the owner's account) and publishes manually. The
    integrated download and reviewer + external editor path is out of scope for now,
    as are automated posting, multiple platforms and level C before a
