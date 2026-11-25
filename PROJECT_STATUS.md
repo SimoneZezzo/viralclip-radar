@@ -204,6 +204,11 @@ November 29)
 [c2 fixes](docs/PROJECT_HISTORY.md#2026-11-25-c2-review-findings-fixed),
 [publishing fixes](docs/PROJECT_HISTORY.md#2026-11-25-static-publishing-and-plan-fixes)).
 
+**Authorized for November 26 (owner, November 25):** SSH access to make
+sealed private copies of both collector databases and run
+`m2_audit --readiness` on them (train days November 24–25). Read-only on
+production; scheduled for 08:00 UTC. November 25 matures November 27 00:05.
+
 **Still pending:**
 
 1. Design review of [live publishing](docs/LIVE_PUBLISHING.md) (top 200
