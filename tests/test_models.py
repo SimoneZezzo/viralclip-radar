@@ -97,6 +97,11 @@ def test_c2_evaluation_reports_every_model_against_baseline_and_c1(sealed):
     for reference in ("latest_views", "c1"):
         assert block[f"c2_vs_{reference}"]["50"]["days"] == 2
     assert "c2_vs_c1" not in report["by_cutoff_minutes"]["30"]
+    breakout = report["c2_model"]["breakout_endpoint"]
+    assert breakout["status"] == "MEASURED" and breakout["k"] in (10, 50)
+    assert set(breakout["days"]) <= {TEST.date().isoformat(), (TEST + DAY).date().isoformat()}
+    assert {"latest_views", "c1", "c2"} <= set(breakout["methods"])
+    assert "vs_latest_views" in breakout["methods"]["c2"]
     for cutoff in ("30", "35", "65"):  # the 60-minute models rank no other cutoff
         test = report["by_cutoff_minutes"][cutoff]["metrics"]["test"]
         assert not any(m.startswith("c2") for m in test["views_24h"]["50"]["overlap"]["methods"])
@@ -223,6 +228,28 @@ def test_selection_skips_validation_days_the_benchmark_excludes(sealed):
         {"game_id": GAME, "day_utc": day.date().isoformat()} for day in TRAIN[:2]
     ]
     assert manifest["validation_days_excluded"] == []
+
+
+def test_a_30_minute_model_scores_only_its_own_cutoff(sealed):
+    root, training, full, *_ = sealed
+    model = root / "data" / "model-30"
+    manifest = train_c2([training], model, VALIDATION, TEST, game_ids=(GAME,), cutoff=30)
+    assert manifest["cutoff_minutes"] == 30
+    report = run_c2(
+        [full],
+        root / "data" / "c2-30-report",
+        VALIDATION,
+        TEST,
+        game_id=GAME,
+        cohort="observed-at-cutoff",
+        model_dir=model,
+    )
+    assert report["c2_model"]["trained_cutoff_minutes"] == 30
+    assert report["c2_model"]["breakout_endpoint"]["status"] == "UNAVAILABLE"  # no metadata
+    for cutoff, expected in ((30, True), (60, False)):
+        test = report["by_cutoff_minutes"][cutoff]["metrics"]["test"]
+        methods = test["views_24h"][50]["overlap"]["methods"]
+        assert ("c2" in methods) is expected
 
 
 def test_top_k_overlap_needs_a_pool_that_can_discriminate():

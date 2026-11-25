@@ -25,9 +25,11 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 from math import copysign, inf, log1p, nan
 from pathlib import Path
+from random import Random
 from statistics import mean
 
-from viralclip.benchmark import KS, Frozen, run_benchmark
+from viralclip.benchmark import KS, RESAMPLES, Frozen, interval, run_benchmark
+from viralclip.benchmark import SEED as BOOTSTRAP_SEED
 from viralclip.challenger import METHOD as C1
 from viralclip.challenger import add_c1, c1_score, paired_test_difference
 from viralclip.dataset import ignored_output, write_json
@@ -45,7 +47,9 @@ from viralclip.storage.database import parse_utc
 
 VERSION = "c2-v1"
 METHOD = "c2"
-CUTOFF = 60
+CUTOFF = 60  # default and primary; `c2-train --cutoff 30` seals the speed endpoint model
+# Breakout endpoint: a creator reference needs this many of their earlier matured labels.
+MIN_CREATOR_HISTORY = 3
 SEED = 20261125
 ACTIVITY_WINDOW = timedelta(hours=1)
 PRIOR_WEIGHT = 5.0
@@ -372,6 +376,7 @@ def train_c2(
     *,
     game_ids: tuple[str, ...],
     metadata: Path | None = None,
+    cutoff: int = CUTOFF,
 ) -> dict:
     """Fit the model zoo on train, select on validation and seal it before any test export.
 
@@ -390,7 +395,7 @@ def train_c2(
     for row in load_rows(directories).values():
         outcome = inputs.outcomes.get(row["clip_id"])
         if (
-            row["cutoff"] == CUTOFF
+            row["cutoff"] == cutoff
             and row["game_id"] in game_ids
             and outcome is not None
             and outcome.status == "valid"
@@ -450,7 +455,7 @@ def train_c2(
         "evaluation_version": VERSION,
         "artifact_schema": ARTIFACT_SCHEMA,
         "game_ids": list(game_ids),
-        "cutoff_minutes": CUTOFF,
+        "cutoff_minutes": cutoff,
         "validation_start": validation_start.isoformat(),
         "test_start": test_start.isoformat(),
         "selection_k": k,
@@ -529,14 +534,19 @@ def add_models(
     coverage: dict[str, float | None] = {}
     names = [manifest["selected"], *sealed["models"]]
     methods = [METHOD, *(f"{METHOD}:{name}" for name in sealed["models"])]
+    cutoff = manifest["cutoff_minutes"]
+    scored_pools: dict[datetime, list] = {}
+    first_c2 = 0
 
     def extend(frozen: Frozen) -> Frozen:
         extended = add_c1(frozen)
         for key, orders in extended.items():
-            if key[1] != CUTOFF:  # the models were trained on 60-minute features only
+            if key[1] != cutoff:  # the models were trained on this cutoff's features only
                 continue
             pool = orders[C1]
             width = len(pool[0].scores)
+            nonlocal first_c2
+            first_c2 = width
             ready = [row for row in pool if rows[row.clip_id, row.cutoff]["eligible"]]
             features = [rows[row.clip_id, row.cutoff] for row in ready]
             found[key[0]] += [(row.clip_id, row.clip_id in meta) for row in ready]
@@ -556,6 +566,7 @@ def add_models(
                 replace(row, scores=(*row.scores, *(scores[name][i] for name in names)))
                 for i, row in enumerate(pool)
             ]
+            scored_pools[key[0]] = rescored
             by_id = {row.clip_id: row for row in rescored}
             result = {
                 method: [by_id[row.clip_id] for row in order] for method, order in orders.items()
@@ -582,7 +593,7 @@ def add_models(
         # A failure here discards the benchmark's staged report.
         admitted = {
             row["day_utc"]
-            for row in report["by_cutoff_minutes"][CUTOFF]["days"]
+            for row in report["by_cutoff_minutes"][cutoff]["days"]
             if row["split"] == "test" and not row["exclusions"]
         }
         values = [
@@ -605,10 +616,25 @@ def add_models(
             "evaluation_metadata_sha256": evaluation_sha256,
             "metadata_coverage_at_cutoff": coverage,
             "exploratory_assumption": manifest["exploratory_assumption"],
-            "trained_cutoff_minutes": CUTOFF,
+            "trained_cutoff_minutes": cutoff,
             "note": "Only the trained cutoff carries c2 comparisons.",
+            # S2 is declared at 60m; a 30m report also shows it at its own cutoff.
+            "breakout_endpoint": {"cutoff_minutes": cutoff}
+            | breakout_endpoint(
+                {
+                    day: scored_pools[day]
+                    for day in scored_pools
+                    if day.date().isoformat() in admitted
+                },
+                inputs,
+                rows,
+                meta,
+                cohort,
+                {"latest_views": (0, False), C1: (first_c2 - 1, False)}
+                | {m: (first_c2 + i, True) for i, m in enumerate(methods)},
+            ),
         }
-        block = report["by_cutoff_minutes"][CUTOFF]
+        block = report["by_cutoff_minutes"][cutoff]
         if not block["metrics"]:
             return
         for k in KS:
@@ -618,6 +644,95 @@ def add_models(
                     block.setdefault(f"c2_vs_{reference}", {})[k] = paired
 
     return extend, annotate
+
+
+def breakout_endpoint(
+    pools: dict[datetime, list],
+    inputs: Inputs,
+    rows: dict[tuple[str, int], dict],
+    meta: dict[str, dict],
+    cohort: str,
+    methods: dict[str, tuple[int, bool]],
+) -> dict:
+    """Secondary endpoint S2: rank creator-relative breakouts on admitted test days.
+
+    A clip's truth is log1p(views_24h) minus its creator's mean log1p(views_24h) over that
+    creator's clips whose label matured by the clip's prediction time (at least
+    MIN_CREATOR_HISTORY). Every method ranks by its own log-scale estimate minus the same
+    reference; `methods` maps a name to (score index, score already in log scale).
+    """
+    if not meta:
+        return {"status": "UNAVAILABLE", "reason": "needs --metadata for creator identity"}
+    created = {clip: row["created"] for (clip, _), row in rows.items()}
+    history: dict[str, list] = defaultdict(list)
+    for clip, outcome in inputs.outcomes.items():
+        token = meta.get(clip, {}).get("broadcaster")
+        if token and outcome.status == "valid" and clip in created:
+            history[token].append((created[clip] + MATURITY, log1p(outcome.views)))
+    series = {token: _series(items) for token, items in history.items()}
+    daily: list[tuple[int, dict[str, list]]] = []
+    for day, pool in sorted(pools.items()):
+        entries = []
+        for row in pool:
+            outcome = inputs.outcomes.get(row.clip_id)
+            token = meta.get(row.clip_id, {}).get("broadcaster")
+            if (
+                outcome is None
+                or outcome.status != "valid"
+                or not token
+                or (cohort == "primary" and row.clip_id not in inputs.primary_clips)
+            ):
+                continue
+            total, count = _known(
+                series.get(token, ([], [0.0])), rows[row.clip_id, row.cutoff]["prediction"]
+            )
+            if count < MIN_CREATOR_HISTORY:
+                continue
+            reference = total / count
+            entries.append((row, log1p(outcome.views) - reference, reference))
+        if len(entries) >= MIN_POOL:
+            daily.append((day, entries))
+    if not daily:
+        return {"status": "INSUFFICIENT DATA", "days": 0}
+    k = 50 if sorted(len(e) for _, e in daily)[len(daily) // 2] > 50 else 10
+    overlaps: dict[str, list[float]] = defaultdict(list)
+    days = []
+    for day, entries in daily:
+        scored = {}
+        for name, (index, in_log) in methods.items():
+            values = []
+            for row, truth, reference in entries:
+                score = row.scores[index]
+                if score is None:
+                    estimate = -inf
+                else:
+                    estimate = (score if in_log else log1p(max(score, 0.0))) - reference
+                values.append((estimate, truth, row.clip_id))
+            scored[name] = values
+        pool_check = [
+            (truth, row.scores[methods[METHOD][0]] is not None) for row, truth, _ in entries
+        ]
+        if not discriminates(pool_check, k):
+            continue
+        days.append(day.date().isoformat())
+        for name, values in scored.items():
+            overlaps[name].append(top_overlap(values, k))
+    if not days:
+        return {"status": "INSUFFICIENT DATA", "days": 0, "k": k}
+    rng = Random(BOOTSTRAP_SEED)
+    samples = [rng.choices(range(len(days)), k=len(days)) for _ in range(RESAMPLES)]
+    result = {"status": "MEASURED", "k": k, "days": days, "methods": {}}
+    for name, values in overlaps.items():
+        entry = {"mean_overlap": mean(values)}
+        for reference in ("latest_views", C1):
+            if name != reference:
+                differences = [a - b for a, b in zip(values, overlaps[reference], strict=True)]
+                entry[f"vs_{reference}"] = {
+                    "paired_difference": mean(differences),
+                    "paired_ci95": interval(differences, samples),
+                }
+        result["methods"][name] = entry
+    return result
 
 
 def run_c2(

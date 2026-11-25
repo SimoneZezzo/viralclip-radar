@@ -102,6 +102,9 @@ def _parser() -> argparse.ArgumentParser:  # Command-line argument parser for th
     train.add_argument("--validation-start", required=True, help="validation start, UTC midnight")
     train.add_argument("--test-start", required=True, help="test start, UTC midnight")
     train.add_argument("--metadata", type=Path, help="c2-metadata CSV enabling exploratory models")
+    train.add_argument(
+        "--cutoff", type=int, choices=CUTOFFS, default=60, help="minutes (default: 60)"
+    )
     train.add_argument("--output", required=True, type=Path, help="new Git-ignored directory")
     probe = commands.add_parser(
         "probe-volume", help="estimate candidate categories' daily clip volume (Helix, no DB)"
@@ -268,6 +271,7 @@ def main(argv: list[str] | None = None) -> int:
                 parse_utc(args.test_start),
                 game_ids=tuple(args.game_id),
                 metadata=args.metadata,
+                cutoff=args.cutoff,
             )
         except (KeyError, TypeError, ValueError, OSError, ImportError) as exc:
             print(f"Training failed: {exc}", file=sys.stderr)

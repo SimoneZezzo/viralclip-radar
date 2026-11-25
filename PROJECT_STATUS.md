@@ -213,7 +213,7 @@ production; scheduled for 08:00 UTC. November 25 matures November 27 00:05.
 evidence script and pre-reboot baseline, Fortnite prerequisites checked
 read-only, December run rehearsed on synthetic data
 ([details](docs/PROJECT_HISTORY.md#2026-11-25-preparation-for-the-reboot-fortnite-and-the-december-run)).
-reviewer re-checks the November 25 work on November 29: range `6e93055..05c6976`
+reviewer re-checks the November 25 work on November 29: range `6e93055..HEAD` (as of the November 25 evening commit)
 (catalog preflight and probe, c2 fixes, publishing with immutable names,
 the R2 uploader, the reboot evidence script, the runbook updates and the
 Fortnite staging record).
@@ -223,6 +223,12 @@ runtime `/opt/viralclip-catalog` (release `92815068a96b`), account, database
 and a passing preflight are in place; the unit is installed and started
 after the November 27 reboot rehearsal (scheduled).
 [Staging](docs/PROJECT_HISTORY.md#2026-11-25-fortnite-collector-staged-not-started)
+
+**c2 secondary endpoints predeclared on November 25:** S1 at 30 minutes and
+S2 creator-relative breakout at 60 minutes, frozen before the December 1
+seal; if c2 wins S1, the game's live ranking uses the 30-minute model
+([protocol](docs/CHRONOLOGICAL_EVALUATION.md#challenger-c2-and-secondary-endpoints)).
+Needs reviewer review on November 29, before the seal.
 
 **Still pending:**
 
