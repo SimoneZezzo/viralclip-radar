@@ -231,7 +231,21 @@ with the preflight rather than interpreting natural DB or WAL growth as
 a monitor write.
 
 For the separately authorized reboot rehearsal, record the boot ID and the
-two collectors' boot enablement before reboot. Capture fresh baseline samples
+two collectors' boot enablement before reboot.
+[deploy/reboot-rehearsal-check.sh](../deploy/reboot-rehearsal-check.sh)
+prints the boot ID, unit and timer states, disk and inodes, and with the
+health script appended both collectors' read-only health; run the same
+command before the reboot and after reconnecting, and compare. From Windows
+PowerShell (the pipe adds a byte-order mark and a final CRLF, so a first and
+a last `command not found` line are harmless; read the printed exit codes
+instead of the SSH exit status):
+
+```powershell
+$check = (Get-Content -Raw .\deploy\reboot-rehearsal-check.sh) + "`n" + (Get-Content -Raw .\deploy\dual-collector-health.sh)
+$check.Replace("`r`n", "`n") | & C:\Windows\System32\OpenSSH\ssh.exe -o BatchMode=yes viralclip-ovh "bash -s"
+```
+
+Capture fresh baseline samples
 using the read-only runbook. Use `sudo -n systemctl reboot` only within the
 approved maintenance window with operator recovery access. On reconnect check
 `cat /proc/sys/kernel/random/boot_id` and both service states. Confirm a new

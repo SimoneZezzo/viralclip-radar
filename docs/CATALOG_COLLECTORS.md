@@ -43,14 +43,17 @@ with a 10 GB reserve; `df -h /` on the VPS gives the current margin.
 Run a read-only preflight of both GTA collectors first
 ([dual-collector operations](DUAL_COLLECTOR_OPERATIONS.md)). Then, with a
 reviewed release unpacked and verified at `/opt/viralclip-catalog` as in
-[package a reviewed revision](MILESTONE_1_ROLLOUT.md#package-a-reviewed-git-revision):
+[package a reviewed revision](MILESTONE_1_ROLLOUT.md#package-a-reviewed-git-revision),
+its environment built as in [Linux deployment step 2](LINUX_DEPLOYMENT.md)
+with that path (`uv` is at `~/.local/bin/uv` on the VPS, version 0.13.9 on
+November 25):
 
 ```bash
 set -e
 ID=<ID>
 test -n "$ID" && [[ "$ID" =~ ^[0-9]+$ ]]
 test ! -e "/var/lib/viralclip-game-$ID"
-sudo -n useradd --system --no-create-home --shell /usr/sbin/nologin "vcg-$ID"
+sudo -n useradd --system --user-group --no-create-home --shell /usr/sbin/nologin "vcg-$ID"
 sudo -n install -d -o "vcg-$ID" -g "vcg-$ID" -m 0700 "/var/lib/viralclip-game-$ID"
 sudo -n install -o root -g root -m 0600 /dev/stdin "/etc/viralclip/game-$ID.env" < game.env
 sudo -n -u "vcg-$ID" /opt/viralclip-catalog/.venv/bin/python -B -m viralclip \

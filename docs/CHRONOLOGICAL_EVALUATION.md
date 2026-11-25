@@ -275,6 +275,42 @@ baseline. The score estimates views at the cutoff. It supplies neither a
 probability nor evidence of learned-model performance. Coverage of clips
 the radar never discovered is **UNKNOWN**.
 
+## December mechanism run (2/2/2)
+
+Order of operations for the preliminary 60m calendar (train November 24–25,
+validation November 28–29, test December 2–3), rehearsed end to end on
+synthetic data on November 25. Each step works on a new sealed private copy,
+every output goes to a new Git-ignored directory under `data/`, and the
+boundaries stay as declared unless `--readiness` excludes a day (then shift
+to the first later admissible date before reading any metric).
+
+1. **December 1, after 00:05 UTC (validation mature, no test-day clip yet).**
+   Seal a copy, then export training data and seal c2 before the first
+   test-day clip exists:
+
+   ```text
+   viralclip --db COPY dataset --start 2026-11-24T00:00:00Z --end 2026-12-02T00:00:00Z --game-id 1867279146 --output data/<new>/train-export
+   viralclip c2-metadata --source COPY --output data/<new>/meta-train.csv
+   viralclip c2-train data/<new>/train-export --game-id 1867279146 --validation-start 2026-11-28T00:00:00Z --test-start 2026-12-02T00:00:00Z --metadata data/<new>/meta-train.csv --output data/<new>/c2-model
+   ```
+
+2. **December 5, after 00:05 UTC (test mature).** Seal a new copy, export
+   the whole calendar and score the three protocols on the same export and
+   boundaries; c2 uses the sealed model and a metadata file from the new copy
+   (allowed: the prior is sealed, and the report records both hashes):
+
+   ```text
+   viralclip --db COPY dataset --start 2026-11-24T00:00:00Z --end 2026-12-04T00:00:00Z --game-id 1867279146 --output data/<new>/full-export
+   viralclip c2-metadata --source COPY --output data/<new>/meta-eval.csv
+   viralclip evaluate data/<new>/full-export --protocol benchmark-v1 --game-id 1867279146 --validation-start 2026-11-28T00:00:00Z --test-start 2026-12-02T00:00:00Z --output data/<new>/bench
+   viralclip evaluate data/<new>/full-export --protocol c1-v1 --game-id 1867279146 --validation-start 2026-11-28T00:00:00Z --test-start 2026-12-02T00:00:00Z --output data/<new>/c1
+   viralclip evaluate data/<new>/full-export --protocol c2-v1 --game-id 1867279146 --validation-start 2026-11-28T00:00:00Z --test-start 2026-12-02T00:00:00Z --model data/<new>/c2-model --metadata data/<new>/meta-eval.csv --output data/<new>/c2
+   ```
+
+The expected status is `MECHANISM ONLY`: it shows the chain works on real
+data and decides no winner. The formal 7/3/7 results follow the dates in the
+[action plan](ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti).
+
 ## Research readiness and GTA V retirement
 
 The 2026-11-21 read-only audit counted valid labels on four UTC dates for

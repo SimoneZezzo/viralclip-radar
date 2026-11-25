@@ -209,6 +209,12 @@ sealed private copies of both collector databases and run
 `m2_audit --readiness` on them (train days November 24–25). Read-only on
 production; scheduled for 08:00 UTC. November 25 matures November 27 00:05.
 
+**Prepared on November 25 (owner-authorized, nothing installed):** reboot
+evidence script and pre-reboot baseline, Fortnite prerequisites checked
+read-only, December run rehearsed on synthetic data
+([details](docs/PROJECT_HISTORY.md#2026-11-25-preparation-for-the-reboot-fortnite-and-the-december-run)).
+reviewer re-checks the November 25 work on November 29.
+
 **Still pending:**
 
 1. Design review of [live publishing](docs/LIVE_PUBLISHING.md) (top 200
