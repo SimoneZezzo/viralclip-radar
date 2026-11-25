@@ -37,10 +37,11 @@ def probe_volume(client: TwitchClient, game_id: str, now: datetime | None = None
             clips += len(data)
             broadcasters.update(row.get("broadcaster_id") for row in data)
             cursor = client.parse_cursor(payload)
-            if not cursor or not data:
-                break
-            if pages == MAX_PAGES:
+            # Helix stops near 1,000 clips per query, so reaching the cap can drop the cursor.
+            if pages == MAX_PAGES and data:
                 truncated += 1
+                break
+            if not cursor or not data:
                 break
     broadcasters.discard(None)
     per_day = clips * (timedelta(days=1) / WINDOW) / WINDOWS  # sampled hours scaled to a day

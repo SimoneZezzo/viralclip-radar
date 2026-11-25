@@ -158,6 +158,7 @@ def test_catalog_preflight_requires_exactly_its_category(tmp_path, monkeypatch):
         "DISCOVERY_INTERVAL_SECONDS": "300",
         "DISCOVERY_LOOKBACK_MINUTES": "30",
         "VIRALCLIP_GAME_IDS": "509658",
+        "VIRALCLIP_GAMES": "",
     }.items():
         monkeypatch.setenv(name, value)
     Database(path).close()
@@ -168,6 +169,10 @@ def test_catalog_preflight_requires_exactly_its_category(tmp_path, monkeypatch):
         preflight(path, "21779")
     with pytest.raises(ValueError, match="numeric"):
         preflight(path, "GTA")
+    monkeypatch.setenv("VIRALCLIP_GAMES", "Grand Theft Auto V")
+    with pytest.raises(ValueError, match="Category IDs"):
+        preflight(path, "509658")  # the collector would also follow the named game
+    monkeypatch.setenv("VIRALCLIP_GAMES", "")
     db = Database(path)
     try:
         db.upsert_game("509658", "Synthetic", NOW)

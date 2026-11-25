@@ -44,10 +44,16 @@ def preflight(database: Path, game_id: str | None = None) -> None:
     expected_ids = (game_id,) if game_id else ()
     if game_id is not None and not game_id.isdigit():
         raise ValueError("A catalog game ID must be numeric")
-    if settings.game_ids != expected_ids or (
-        settings.discovery_interval_seconds,
-        settings.discovery_lookback_minutes,
-    ) != (300, 30):
+    # The collector also reads VIRALCLIP_GAMES by name, so a catalog service must leave it empty.
+    if (
+        (game_id is not None and settings.games)
+        or settings.game_ids != expected_ids
+        or (
+            settings.discovery_interval_seconds,
+            settings.discovery_lookback_minutes,
+        )
+        != (300, 30)
+    ):
         raise ValueError("Category IDs, cadence, or lookback differ from the approved setup")
     with closing(_open_read_only(database)) as reader:
         reader.execute("PRAGMA query_only = ON")
