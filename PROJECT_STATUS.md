@@ -230,6 +230,12 @@ seal; if c2 wins S1, the game's live ranking uses the 30-minute model
 ([protocol](docs/CHRONOLOGICAL_EVALUATION.md#challenger-c2-and-secondary-endpoints)).
 Needs reviewer review on November 29, before the seal.
 
+**Faster calendar approved on November 25:** c2 sealed December 7 and
+scored on the formal GTA VI test December 8–14 (result December 16), a
+replication on December 17–23, a predeclared under-ten-minute gap tolerance,
+and VALORANT around November 29 (owner creates its Twitch application).
+[Decision](docs/PROJECT_HISTORY.md#2026-11-25-faster-calendar-options-approved)
+
 **Still pending:**
 
 1. Design review of [live publishing](docs/LIVE_PUBLISHING.md) (top 200

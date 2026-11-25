@@ -42,7 +42,15 @@ Twitch discovery. A pool also needs at least 10 matched labeled clips with
 at least two distinct outcomes. Each of train, validation and test must have
 at least two distinct rankable UTC days per game after embargo. Declared
 outages exclude a game/day when they overlap its creation day or full
-label-maturity horizon. Game scope comes from the source manifest or the
+label-maturity horizon (creation day plus 48 hours and five minutes).
+
+**Short-gap tolerance (owner, November 25, 2026, predeclared before any
+formal test day exists).** A collection gap shorter than ten minutes, from
+the collector's stop to its first new observation after restart (measured
+from the journal), is recorded in the evidence log but not declared as an
+outage to formal exports, so it excludes no day; the observations it delays
+or misses stay late or missing as recorded. Longer gaps are declared. The
+rule applies to every protocol and game on the same calendar. Game scope comes from the source manifest or the
 games present in an unfiltered export. This is a minimum
 scoring floor. Two days alone provide weak evidence about generalization.
 Without adequate coverage the harness reports `INSUFFICIENT DATA` and emits no
@@ -308,6 +316,19 @@ including losses and inconclusive ones.
   against `latest_views` and c1. Needs `--metadata` (creator identity); the
   report states `UNAVAILABLE` otherwise. Creator history starts with the
   exports, so early test days have fewer eligible clips.
+
+**Formal c2 calendar (owner, November 25).** On GTA VI the official c2
+result uses the benchmark's formal window: `c2-train --validation-start
+2026-12-03T00:00:00Z --test-start 2026-12-08T00:00:00Z` (train November
+24–30, validation December 3–5) sealed on December 7 after 00:05 UTC,
+before the first test day, then scored with c1 and the baselines on test
+days December 8–14 (result from December 16 00:05). A replication follows:
+a new c2 comparison sealed after December 16 00:05 and before December 17
+with `--validation-start 2026-12-08T00:00:00Z --test-start
+2026-12-17T00:00:00Z` (training rows matured by December 8), scored on
+December 17–23 (from December 25 00:05). The first window carries the
+claim; the replication confirms or contradicts it, and both are reported.
+Excluded days shift a window to the next admissible dates as usual.
 
 **Product decision (owner, November 25).** If c2 wins S1 for a game, the live
 ranking for that game uses the 30-minute model as its base, since an earlier
