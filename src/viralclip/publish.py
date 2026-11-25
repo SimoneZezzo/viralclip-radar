@@ -1,13 +1,20 @@
-"""Publish sealed prediction runs as static JSON, replacing each file atomically."""
+"""Publish sealed prediction runs as static JSON with immutable names and the index last.
+
+Each game file is named by its content hash, so an update never rewrites a file a live
+index points to. Replacing `index.json` alone switches readers to the new set; an
+interrupted run leaves the previous index and its files intact.
+"""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shutil
 import sqlite3
+import time
 from contextlib import closing
 from datetime import datetime
 from pathlib import Path
@@ -16,6 +23,10 @@ from urllib.parse import quote
 from viralclip.challenger import SCORE_VERSION as C1_VERSION
 from viralclip.predictions import BASELINE_VERSION, NOT_TRAINED, _read_registry
 from viralclip.storage.database import to_utc_iso, utc_now
+
+GAME_FILE = re.compile(r"[0-9]+-[0-9a-f]{16}\.json")
+# Unreferenced game files survive this long for readers and caches holding an older index.
+GRACE_SECONDS = 6 * 3600
 
 
 def _method(run: sqlite3.Row) -> str:
@@ -110,28 +121,40 @@ def publish(
             db.execute("BEGIN")
             for game_id, name in games.items():
                 ranking = _ranking(db, game_id, name.strip(), stamp)
-                (stage / f"{game_id}.json").write_text(
-                    json.dumps(ranking, ensure_ascii=False), encoding="utf-8"
-                )
+                content = json.dumps(ranking, ensure_ascii=False).encode("utf-8")
+                filename = f"{game_id}-{hashlib.sha256(content).hexdigest()[:16]}.json"
+                (stage / filename).write_bytes(content)
                 entries.append(
-                    {"id": game_id, "name": ranking["game_name"], "scored_at": ranking["scored_at"]}
+                    {
+                        "id": game_id,
+                        "name": ranking["game_name"],
+                        "scored_at": ranking["scored_at"],
+                        "file": filename,
+                    }
                 )
         index = {"published_at": stamp, "games": entries}
         manifest = directory / "index.json"
-        old_ids = set()
+        previous = set()
         if manifest.exists():
             for game in json.loads(manifest.read_text(encoding="utf-8"))["games"]:
-                if re.fullmatch(r"[0-9]+", game["id"]):
-                    old_ids.add(game["id"])
+                if GAME_FILE.fullmatch(game.get("file", "")):
+                    previous.add(game["file"])
         (stage / manifest.name).write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
-        # The index becomes visible after every file it references is in place.
-        for game_id in games:
-            filename = f"{game_id}.json"
-            os.replace(stage / filename, directory / filename)
+        # New names never overwrite a file the live index references; the index goes last.
+        for entry in entries:
+            os.replace(stage / entry["file"], directory / entry["file"])
         os.replace(stage / manifest.name, manifest)
-        # Retire only game files named by our previous index.
-        for old_id in old_ids.difference(games):
-            (directory / f"{old_id}.json").unlink(missing_ok=True)
+        # Keep the previous generation and anything newer than the grace period for readers
+        # still holding an older index; remove older game files, including interrupted runs.
+        keep = previous | {entry["file"] for entry in entries}
+        horizon = time.time() - GRACE_SECONDS  # file times are wall-clock times
+        for path in directory.iterdir():
+            if GAME_FILE.fullmatch(path.name) and path.name not in keep:
+                try:
+                    if path.stat().st_mtime < horizon:
+                        path.unlink()
+                except OSError:
+                    pass  # e.g. open on Windows; the publication succeeded, retried next run
     finally:
         shutil.rmtree(stage)
     return index

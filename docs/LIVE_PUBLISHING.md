@@ -32,8 +32,11 @@ not need those rows: c1 and c2 rebuild full orders from sealed exports.
    that game (c2, else c1, else the declared `latest_views` baseline), set in
    a reviewed configuration file, never chosen automatically.
 5. **Publication.** `viralclip publish` writes per-game JSON and the index
-   atomically to a staging directory, then uploads it to R2 (object writes
-   in index-last order). The site is deployed to Pages only when the front
+   atomically to a staging directory, then uploads it to R2: game files under
+   new content-hashed names first, `index.json` last, so a partial upload
+   never mixes two updates. Unreferenced game files are pruned only after a
+   six-hour grace period, and on R2 only against the last index the upload
+   completed; the front end reloads the index once if a game file is gone. The site is deployed to Pages only when the front
    end changes. Credentials: an R2 API token scoped to one bucket, in a
    root-only environment file.
 

@@ -152,11 +152,14 @@ describe("Twitch Shortlist", () => {
     vi.stubEnv("BASE_URL", "/portfolio/");
     const user = userEvent.setup();
     const base = "/portfolio/rankings/";
-    const games = [{ id: "42", name: "First game" }, { id: "43", name: "Second game" }];
+    const games = [
+      { id: "42", name: "First game", file: "42-00000000000000aa.json" },
+      { id: "43", name: "Second game", file: "43-00000000000000bb.json" },
+    ];
     const method = "latest_views baseline · no validated model for this game";
     fetchMock.mockImplementation(async (path: string) => {
       if (path === base + "index.json") return Response.json({ games });
-      const game = games.find(({ id }) => path === base + id + ".json");
+      const game = games.find(({ file }) => path === base + file);
       if (!game) return new Response("", { status: 404 });
       const url = game.id === "43" ? "https://clips.twitch.tv/StoredSlug" : null;
       return Response.json({
@@ -177,7 +180,32 @@ describe("Twitch Shortlist", () => {
       "href", "https://clips.twitch.tv/StoredSlug",
     );
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
-      base + "index.json", base + "42.json", base + "index.json", base + "43.json",
+      base + "index.json", base + games[0].file, base + "index.json", base + games[1].file,
     ]);
+  });
+
+  it("reloads the static index once when a newer publication pruned its game file", async () => {
+    vi.stubEnv("VITE_STATIC_DATA", "1");
+    vi.stubEnv("BASE_URL", "/");
+    const indexes = [
+      { games: [{ id: "42", name: "First game", file: "42-00000000000000aa.json" }] },
+      { games: [{ id: "42", name: "First game", file: "42-00000000000000bb.json" }] },
+    ];
+    let reads = 0;
+    fetchMock.mockImplementation(async (path: string) => {
+      if (path === "/rankings/index.json") return Response.json(indexes[Math.min(reads++, 1)]);
+      if (path !== "/rankings/42-00000000000000bb.json") return new Response("", { status: 404 });
+      return Response.json({
+        ...gtaV.run, game_id: "42", method_label: "Fresh method", synthetic: true,
+        published_at: "2026-11-25T09:00:00Z", clips: [],
+      });
+    });
+    renderApp();
+    expect(await screen.findByText("Fresh method")).toBeVisible();
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      "/rankings/index.json", "/rankings/42-00000000000000aa.json",
+      "/rankings/index.json", "/rankings/42-00000000000000bb.json",
+    ]);
+    expect(fetchMock.mock.calls[2][1]).toEqual({ cache: "no-cache" });
   });
 });

@@ -44,8 +44,11 @@ export interface Ranking {
   predictions: Prediction[];
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+class NotFound extends Error {}
+
+async function getJson<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = init ? await fetch(path, init) : await fetch(path);
+  if (response.status === 404) throw new NotFound("Ranking unavailable.");
   if (!response.ok) throw new Error("Ranking unavailable.");
   return response.json();
 }
@@ -69,15 +72,30 @@ function twitchLink(stored: string | null): string | null {
   return null;
 }
 
-export async function fetchRanking(gameId?: string): Promise<Ranking> {
+export async function fetchRanking(gameId?: string, retried = false): Promise<Ranking> {
   if (import.meta.env.VITE_STATIC_DATA === "1") {
     const base = import.meta.env.BASE_URL + "rankings/";
-    const { games } = await getJson<{ games: Game[] }>(base + "index.json");
-    const id = gameId ?? games[0]?.id;
-    if (!id || !/^[0-9]+$/.test(id) || !games.some((game) => game.id === id)) {
+    // The retry revalidates the index, so a browser cache cannot hand back the stale one.
+    const index = await getJson<{ games: (Game & { file: string })[] }>(
+      base + "index.json",
+      retried ? { cache: "no-cache" } : undefined,
+    );
+    const id = gameId ?? index.games[0]?.id;
+    const entry = index.games.find((game) => game.id === id);
+    // Game files carry immutable, content-hashed names listed in the index.
+    if (!id || !entry || !/^[0-9]+-[0-9a-f]{16}\.json$/.test(entry.file)) {
       throw new Error("Game unavailable.");
     }
-    const { clips, synthetic, ...run } = await getJson<PublishedGame>(base + id + ".json");
+    const games = index.games.map(({ id, name }) => ({ id, name }));
+    let published: PublishedGame;
+    try {
+      published = await getJson<PublishedGame>(base + entry.file);
+    } catch (error) {
+      // A newer publication may have pruned the file of a stale index: reload it once.
+      if (error instanceof NotFound && !retried) return fetchRanking(gameId, true);
+      throw error;
+    }
+    const { clips, synthetic, ...run } = published;
     if (run.game_id !== id) throw new Error("Wrong game in ranking.");
     return {
       games,

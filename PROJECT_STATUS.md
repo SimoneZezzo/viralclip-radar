@@ -141,9 +141,9 @@ first signal and the candidate shortlist.
    exploratory features; owner: if the exploratory variant beats the
    baseline or c1 it becomes the definitive version) and the static deploy
    (`viralclip publish`, `VITE_STATIC_DATA=1` build, `web/README.md`).
-   reviewer's re-review of the c2 fixes is pending (reviewer usage limit).
-   Catalog collectors prepared offline (pending reviewer review, nothing
-   installed): `viralclip-game@<ID>.service`, `game.env.example`, catalog
+   reviewer reviewed the c2 tooling and the catalog preparation on November 25;
+   all findings are fixed and closed.
+   Catalog collectors prepared offline (nothing installed): `viralclip-game@<ID>.service`, `game.env.example`, catalog
    preflight (`viralclip.deployment preflight DB --game-id ID`), reliability
    profile `vcg-<ID>`, `viralclip probe-volume` and the
    [catalog runbook](docs/CATALOG_COLLECTORS.md).
@@ -188,13 +188,13 @@ first signal and the candidate shortlist.
 Agents declare multi-file work here before starting and remove it when done,
 per the [collaboration rules](docs/REVIEW_INTEGRATION.md#collaborazione-fra-reviewer-e-reviewer).
 
-**reviewer review of `674bd0d..6e93055` (2026-11-25): CHANGES NEEDED, mostly
-fixed.** Catalog preflight, probe saturation and the four c2 findings are fixed
-and closed after reviewer re-review
+**reviewer review of `674bd0d..6e93055` (2026-11-25): all eight findings fixed**
+after reviewer re-review and a final check. Pending: reviewer's confirmation of the
+last publishing changes (grace period, Windows cleanup, index reload), at its
+usage limit until November 29
 ([review](docs/PROJECT_HISTORY.md#2026-11-25-reviewer-review-of-the-november-25-work),
-[c2 fixes](docs/PROJECT_HISTORY.md#2026-11-25-c2-review-findings-fixed)).
-Open: atomic `publish` update (P2, also affects item 1 below) and the
-ACTION_PLAN c2 text (P3).
+[c2 fixes](docs/PROJECT_HISTORY.md#2026-11-25-c2-review-findings-fixed),
+[publishing fixes](docs/PROJECT_HISTORY.md#2026-11-25-static-publishing-and-plan-fixes)).
 
 **Still pending:**
 
