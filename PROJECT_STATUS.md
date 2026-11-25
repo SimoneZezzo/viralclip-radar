@@ -188,6 +188,21 @@ first signal and the candidate shortlist.
 Agents declare multi-file work here before starting and remove it when done,
 per the [collaboration rules](docs/REVIEW_INTEGRATION.md#collaborazione-fra-reviewer-e-reviewer).
 
+**Pending reviewer reviews (prepared by reviewer on 2026-11-25 while reviewer was at
+its usage limit; the owner asked that reviewer find everything ready):**
+
+1. Re-review of the c2 fixes and the MLP (`f710b21`, `d84de71`): verify the
+   eight earlier findings are fixed (`src/viralclip/models.py`).
+2. Review of the catalog collector preparation (`c5074d3`):
+   `deploy/viralclip-game@.service`, `deploy/game.env.example`,
+   `deployment.preflight --game-id`, `reliability.resolve_profile`,
+   `probe.py`, [catalog runbook](docs/CATALOG_COLLECTORS.md). Required before
+   the first catalog deployment after the November 27 rehearsal.
+3. Design review of [live publishing](docs/LIVE_PUBLISHING.md) (top 200
+   recorded, rolling 24-hour pool, 15-minute refresh, Cloudflare R2).
+4. First-game choice from the November 25 volume probe
+   ([evidence](docs/PROJECT_HISTORY.md#2026-11-25-candidate-category-volume-probe)).
+
 - None.
 
 ## Repository and workflow
