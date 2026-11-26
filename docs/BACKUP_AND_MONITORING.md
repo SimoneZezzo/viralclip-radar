@@ -1,5 +1,9 @@
 # OVH production backup and monitoring
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 The backup rollout below is historical. The operator cancelled M1-02 and
 waived the unmet off-VPS requirement of M1-01. Use the
 [current collection and monitoring plan](MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan)

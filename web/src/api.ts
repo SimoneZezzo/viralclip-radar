@@ -102,10 +102,10 @@ export async function fetchRanking(gameId?: string, retried = false): Promise<Ra
       synthetic,
       run,
       editors: [
-        { name: "external editor", url: "https://example.invalid/editor/" },
         { name: "CapCut", url: "https://www.capcut.com/" },
-        { name: "external editor", url: "https://example.invalid/editor/" },
-        { name: "external editor", url: "https://example.invalid/editor/" },
+        { name: "Clipchamp", url: "https://clipchamp.com/" },
+        { name: "DaVinci Resolve", url: "https://www.blackmagicdesign.com/products/davinciresolve" },
+        { name: "Shotcut", url: "https://shotcut.org/" },
       ],
       predictions: clips.map((clip) => ({
         ...clip,

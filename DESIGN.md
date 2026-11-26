@@ -179,8 +179,8 @@ demo works offline). Mono: `"IBM Plex Mono", Consolas, monospace`.
 
 ## Truthful states
 
-These rules come from the product's research invariants and the
-[demo review](docs/DEMO_REVIEW.md) and override aesthetics:
+These rules come from the product's research invariants and override
+aesthetics:
 
 - Synthetic data is labeled on the page (demo tag, "Synthetic preview").
   Anything built on synthetic fixtures for M4 carries

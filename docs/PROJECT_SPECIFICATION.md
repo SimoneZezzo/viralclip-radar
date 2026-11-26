@@ -1,6 +1,6 @@
 # ViralClip Radar product and engineering specification
 
-The original specification below preserves the product scope, technical contracts and milestone order. Sections 0, 10 and 11 record the initial workflow and bootstrap. Follow the current [repository instructions](../WORKFLOW.md) and [status](../PROJECT_STATUS.md) for session work.
+The original specification below preserves the product scope, technical contracts and milestone order. Sections 0, 10 and 11 record the initial engineering workflow and bootstrap. The project closed on 2026-11-26; see [status](../PROJECT_STATUS.md) for what was built and what was never measured.
 
 > **Project:** ViralClip Radar
 > **Status:** New open-source Python project (November 2026)
@@ -8,7 +8,7 @@ The original specification below preserves the product scope, technical contract
 > **First case study:** Grand Theft Auto VI; support other Twitch games/categories without changing the architecture.
 > **Most urgent priority:** START COLLECTING REAL TIME-SERIES DATA AS SOON AS A CORRECT MINIMAL COLLECTOR IS READY. Historical Twitch clip view-count curves cannot be reconstructed through the normal API.
 
-## 0. Instructions to reviewer: how to work in this repository
+## 0. Engineering workflow
 
 - Read [PROJECT_STATUS.md](../PROJECT_STATUS.md) at the beginning of each session for current progress, verified results, blockers and next steps. Update its milestone checklists and dated evidence log after meaningful work; never mark live acceptance complete based only on mocked tests. This file remains the product and engineering specification.
 - Treat this file as the product and engineering specification. Implement it **incrementally**, not as one giant unreviewed change.
@@ -24,7 +24,7 @@ The original specification below preserves the product scope, technical contract
 
 ## 1. Product scope
 
-This section defines the scope of M0–M4. The [long-term product vision](LONG_TERM_PRODUCT_VISION.md) describes proposals for later milestones.
+This section defines the scope of M0–M4. The long-term product vision describes proposals for later milestones.
 
 ### What it DOES
 1. Discover publicly listed Twitch clips for configurable game categories through the official Helix API.
@@ -231,7 +231,6 @@ Using mocked Twitch API responses and a frozen clock, show that:
 
 ```text
 viralclip-radar/
-├── WORKFLOW.md
 ├── pyproject.toml
 ├── .env.example
 ├── .gitignore
@@ -272,7 +271,7 @@ Do not scaffold empty modules just to satisfy the future layout. Build functioni
 7. Improve observability and assess actual coverage/lag.
 8. Only then implement rankings, labels, ML, dashboard, and GitHub polish.
 
-## 10. Initial reviewer task to perform when the user says "start"
+## 10. First implementation task
 
 **Implement Milestone 0 now** using the existing repository, or initialize a minimal Python package if it is empty. Generate runnable code, schema, config template, CLI, tests and a concise README. Focus on producing trustworthy time-stamped observations before UI or ML. Run the mocked test suite and report exact commands for the user to add Twitch credentials and start the collector. Do not start a VPS, spend money, or claim to have accessed Twitch without valid credentials.
 

@@ -1,5 +1,9 @@
 # M1 reliability hardening
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 Audit of 2026-11-22 sampled working collectors. GTA V was healthy. GTA VI
 was degraded with incomplete discovery. Its oldest overdue job was 3.6s at
 sample B and neither collector had failed jobs. Both PIDs and database
@@ -18,7 +22,6 @@ took 6.93s with no source WAL growth. The subsequent isolated read
 passed the full SQLite integrity and foreign-key checks. On this
 database, a capped live integrity read interrupted before a verdict.
 Keep the live-read and isolated-verification budgets separate.
-[Integrity evidence](PROJECT_HISTORY.md#2026-11-23-m1m2-discovery-and-data-quality-audit)
 
 ## GTA VI diagnosis and local correction
 

@@ -1,5 +1,9 @@
 # GTA VI discovery recovery replay
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 Run the nine offline comparisons from the repository root:
 
 ```powershell
@@ -99,7 +103,6 @@ page despite its HTTP 200 status. Three HTTP requests were attempted:
 one token request, one validation and one discovery page. Pages 8–10
 were unobserved. The stop rule remained in force and no further probe
 requests were sent on that attempt.
-[Live test evidence](PROJECT_HISTORY.md#2026-11-23-bounded-gta-vi-helix-comparison)
 
 ## Resumed comparison and canary decision
 
@@ -165,4 +168,3 @@ The authorized November 23 canary passed, and GTA VI now uses eight
 overlap pages. All three matched-phase cycles reached page 8 and
 recovered 20 previously unseen clips within 60 minutes across two
 distinct windows. The initial M2 readiness check remains PARTIAL.
-[Production evidence and final configuration](PROJECT_HISTORY.md#2026-11-23-gta-vi-eight-page-canary)

@@ -33,7 +33,7 @@ def test_demo_registry_seals_predictions_and_uses_only_pre_cutoff_observations(t
     assert all("media" not in row and "scenario" not in row for row in rows)
     assert rows[0]["twitch_url"] is None
     assert rows[0]["url"] == "https://example.invalid/synthetic-clips/" + rows[0]["clip_id"]
-    assert model["editors"][0]["name"] == "external editor"
+    assert model["editors"][0]["name"] == "CapCut"
     assert [row["score"] for row in baseline["predictions"]] == [100, 75, 31, 1]
 
     with closing(sqlite3.connect(path)) as db:

@@ -1,5 +1,9 @@
 # Point-in-time dataset, version 2a.2
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 Use the dataset command from the repository root with Git and the project's
 Python environment available. The command opens the configured database in
 SQLite read-only mode, sets `query_only`, and takes a single consistent read.

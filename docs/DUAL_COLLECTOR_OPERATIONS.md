@@ -1,5 +1,9 @@
 # Final operations rollout for GTA V and GTA VI
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 The backup and deployment instructions below record the original OVH
 rollout. M1-02 is cancelled. Use the
 [current collection and monitoring plan](MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan)

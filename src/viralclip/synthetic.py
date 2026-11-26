@@ -80,7 +80,7 @@ def generate(
                     "view_count": views_at(final, tau, delay),
                     "broadcaster_id": f"synthetic-channel-{channel:03d}",
                     "broadcaster_name": f"synthetic_channel_{channel:03d}",
-                    "title": f"Synthetic clip {index}",
+                    "title": f"Clip {index}",
                     "duration": round(rng.uniform(10, 60), 1),
                     "language": "en",
                 }

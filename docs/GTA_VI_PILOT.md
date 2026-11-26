@@ -1,5 +1,9 @@
 # GTA VI launch collector pilot
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 **Running since November 21, 2026** as a separate service next to GTA V,
 which keeps its own unit, account, data and credentials. The live authenticated name lookup and reverse ID lookup on
 November 19, 2026 returned **Grand Theft Auto VI, 1867279146**. [Helix Get Games](https://dev.twitch.tv/docs/api/reference/games)
@@ -54,7 +58,6 @@ The minute-interval candidate described here was superseded on November 21
 by the structural discovery release `4ab8d05f1ca1`, described under
 [scan progress and coverage](#separate-scan-progress-and-coverage). Its full
 text is preserved in Git (`git show b10cf94:docs/GTA_VI_PILOT.md`).
-[Release evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-structural-discovery-release)
 
 ### GTA VI data impact
 
@@ -147,7 +150,6 @@ for any configuration change.
 The targeted two-file runtime exchange for the minute-interval candidate
 was prepared and executed on November 21. Its full procedure, hashes and
 checks are preserved in Git (`git show b10cf94:docs/GTA_VI_PILOT.md`).
-[Preflight evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-rollout-preflight)
 
 ### Coverage gate after the live Helix diagnostic
 
@@ -168,7 +170,6 @@ that advances it must demonstrate coverage through an independently
 verifiable retrieval method. Known-ID checks can falsify a coverage
 claim. They cannot enumerate clips whose IDs are unknown. The active
 runtime and the preserved rollback runtime remain available.
-[Diagnostic evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-helix-coverage-blocker)
 
 ### Separate scan progress and coverage
 
@@ -229,7 +230,6 @@ Verify with `systemctl is-enabled viralclip-gta-vi.service` and inspect
 the symlink under `/etc/systemd/system/multi-user.target.wants/`.
 The enablement used `systemctl enable` with both collectors running.
 Actual reboot recovery has yet to be tested.
-[Enablement evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-persistent-boot-enablement)
 
 ## Initial installation
 
@@ -237,7 +237,6 @@ The first installation, staging and authorized start were completed on
 November 21, 2026. Those one-time commands are preserved in Git
 (`git show b10cf94:docs/GTA_VI_PILOT.md`). Current health checks use the
 [dual-collector runbook](DUAL_COLLECTOR_OPERATIONS.md).
-[Activation evidence](PROJECT_HISTORY.md#2026-11-21-gta-vi-controlled-activation)
 
 ## Backup and monitoring integration
 

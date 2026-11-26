@@ -1,5 +1,9 @@
 # Milestone 1 operations runbook for GTA V and GTA VI
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 **Current status.** Both collectors run as separate systemd services on the
 OVH VPS and are enabled at boot. The reliability timers are active. M1-02 is
 cancelled. The operator waived the off-VPS requirement of M1-01, which
@@ -169,8 +173,6 @@ hash, category, manifest and SQLite checks, are retained on the VPS at
 The staging originals remain under `~/viralclip-stage/`. The Windows VHDX
 was removed on 2026-11-21. VPS retention shares the live databases'
 exposure to complete host loss, which the operator accepted.
-[Retention evidence](PROJECT_HISTORY.md#2026-11-21-m1-01-stable-vps-anchor-retention)
-· [Removal evidence](PROJECT_HISTORY.md#2026-11-21-m1-01-windows-vhdx-removed)
 
 To re-verify the anchors in an authorized SSH session, check that each DB and
 `manifest.json` is a regular file on a canonical path without SQLite sidecars,

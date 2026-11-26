@@ -11,7 +11,7 @@ function clip(overrides: Partial<Prediction>): Prediction {
     prediction_at: "2026-11-22T19:04:00.000000Z",
     score: 100,
     rank: 1,
-    title: "Overpass getaway",
+    title: "Clip 1",
     channel: "neon_driver",
     duration: 28,
     scene: 0,
@@ -29,8 +29,8 @@ function ranking(gameId: string, method: "baseline" | "simulated_model", clips: 
       { id: "32982", name: "GTA V" },
     ],
     editors: [
-      { name: "external editor", url: "https://example.invalid/editor/" },
       { name: "CapCut", url: "https://www.capcut.com/" },
+      { name: "Shotcut", url: "https://shotcut.org/" },
     ],
     run: {
       game_id: gameId,
@@ -90,7 +90,7 @@ describe("Twitch Shortlist", () => {
     expect(rows[0]).toHaveAttribute("aria-pressed", "true");
     expect(within(rows[1]).getAllByText("—")).toHaveLength(2);
     expect(screen.getByText("Simulated model")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Overpass getaway" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Clip 1" })).toBeInTheDocument();
     expect(screen.getByText("Local demo · Synthetic data")).toBeInTheDocument();
   });
 
@@ -123,7 +123,7 @@ describe("Twitch Shortlist", () => {
     renderApp();
     const editors = await screen.findByRole("list", { name: "External editors" });
     const links = within(editors).getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(["external editor", "CapCut"]);
+    expect(links.map((link) => link.textContent)).toEqual(["CapCut", "Shotcut"]);
     for (const link of links) {
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");

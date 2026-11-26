@@ -1,10 +1,10 @@
-# Live publishing (proposal, pending reviewer review)
+# Live publishing (proposal, not implemented)
 
-Draft by reviewer, 2026-11-25. Owner decisions already taken: Cloudflare Pages
+Draft of 2026-11-25; the project closed on 2026-11-26 before any of it was
+built. Owner decisions already taken: Cloudflare Pages
 hosts the static front end, Cloudflare R2 hosts the ranking JSON; every
 refresh records the top 200 in the prediction registry; the site shows the
-top 50 with "show more" up to 200
-([action plan §5bis](ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti)).
+top 50 with "show more" up to 200.
 Nothing here is implemented or installed yet.
 
 ## Problem

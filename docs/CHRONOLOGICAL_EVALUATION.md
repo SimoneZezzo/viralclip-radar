@@ -1,5 +1,9 @@
 # Chronological ranking evaluation
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 `viralclip evaluate` reads version 2A CSV and JSON artifacts. It verifies the
 artifact SHA-256 hashes and the feature and outcome time bounds. It requires
 no SQLite connection, Twitch connection or credentials. It writes only to a
@@ -206,7 +210,6 @@ unlabeled clips among the first K.
 **Status.** Frozen on 2026-11-25, before validation starts on 2026-11-28
 at 00:00 UTC. The evaluation version is `c1-v1`. The live registry score
 version is `c1:staleness-projection:v1`.
-[Action plan §5bis](ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti).
 
 **Score.** Use only the benchmark-v1 candidate from export 2a.3. Project
 the latest view count to the cutoff using the export's first-to-latest
@@ -374,8 +377,8 @@ to the first later admissible date before reading any metric).
    `c2-30` report carries S1.
 
 The expected status is `MECHANISM ONLY`: it shows the chain works on real
-data and decides no winner. The formal 7/3/7 results follow the dates in the
-[action plan](ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti).
+data and decides no winner. The formal 7/3/7 results were never produced: the
+project closed on 2026-11-26 before any real-data scoring.
 
 ## Research readiness and GTA V retirement
 
@@ -385,8 +388,7 @@ successful search-window coverage, GTA V had two rankable dates and GTA VI
 had zero. Search-window coverage records queries and cannot measure clips
 the API never returned. Treat the launch day, the stalled GTA VI period
 and any outage as explicit coverage strata. The independent scoring and
-training gates remain open.
-[Dated audit](PROJECT_HISTORY.md#2026-11-21-research-first-strategy-and-read-only-audit).
+training gates were never reached.
 
 For the first reproducible experiment, predeclare a strict 60-minute
 primary cutoff and keep 30/35/65 minutes as distinct analyses. Target at

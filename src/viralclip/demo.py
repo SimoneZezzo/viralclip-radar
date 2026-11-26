@@ -25,10 +25,10 @@ SIMULATED_VERSION = "fixture:potential:v3"
 # Suggested external editors. The site only links to them: it has no integration,
 # sends them nothing, and the user picks and pays for the editor.
 EDITORS = (
-    {"name": "external editor", "url": "https://example.invalid/editor/"},
     {"name": "CapCut", "url": "https://www.capcut.com/"},
-    {"name": "external editor", "url": "https://example.invalid/editor/"},
-    {"name": "external editor", "url": "https://example.invalid/editor/"},
+    {"name": "Clipchamp", "url": "https://clipchamp.com/"},
+    {"name": "DaVinci Resolve", "url": "https://www.blackmagicdesign.com/products/davinciresolve"},
+    {"name": "Shotcut", "url": "https://shotcut.org/"},
 )
 SYNTHETIC_LINK = "https://example.invalid/synthetic-clips/"
 
@@ -36,18 +36,18 @@ SYNTHETIC_LINK = "https://example.invalid/synthetic-clips/"
 # preview scene
 CLIPS = {
     GTA_VI_GAME_ID: (
-        ("Overpass getaway", "neon_driver", 28, 128, 1840, 0),
-        ("Parking with inches to spare", "city_loop", 19, 96, 1420, 1),
-        ("One shortcut too many", "last_corner", 34, 118, 1190, 2),
-        ("Coastal drift", "ocean_shift", 22, 71, 860, 3),
-        ("Back in the rain", "after_rain", 41, 56, 620, 4),
-        ("One last lap", "neon_driver", 26, 34, None, 5),
+        ("Clip 1", "neon_driver", 28, 128, 1840, 0),
+        ("Clip 2", "city_loop", 19, 96, 1420, 1),
+        ("Clip 3", "last_corner", 34, 118, 1190, 2),
+        ("Clip 4", "ocean_shift", 22, 71, 860, 3),
+        ("Clip 5", "after_rain", 41, 56, 620, 4),
+        ("Clip 6", "neon_driver", 26, 34, None, 5),
     ),
     "32982": (
-        ("Rooftop landing", "roof_runner", 21, 98, None, 2),
-        ("The impossible turn", "west_coast", 35, 79, None, 0),
-        ("Out of the tunnel", "late_shift", 32, 45, None, 4),
-        ("Sunset lap", "roof_runner", 24, 22, None, 3),
+        ("Clip 1", "roof_runner", 21, 98, None, 2),
+        ("Clip 2", "west_coast", 35, 79, None, 0),
+        ("Clip 3", "late_shift", 32, 45, None, 4),
+        ("Clip 4", "roof_runner", 24, 22, None, 3),
     ),
 }
 

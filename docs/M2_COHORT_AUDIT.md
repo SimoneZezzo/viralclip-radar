@@ -1,5 +1,9 @@
 # Audit M2 delle coorti
 
+> **Chiuso il 2026-11-26.** I collector sono fermi e tutti i dati raccolti sono
+> stati cancellati. Il documento resta come traccia di progetto e procedure;
+> stati, date e conteggi di produzione citati sotto sono storici.
+
 L'audit riporta, per categoria, la disponibilità delle feature e degli outcome,
 le giornate utilizzabili e la fattibilità degli split cronologici. Emette JSON
 su stdout e un riepilogo su stderr. Legge uno snapshot SQLite per database,

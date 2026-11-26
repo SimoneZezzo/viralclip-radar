@@ -1,5 +1,9 @@
 # Windows 11 collector supervision
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 The supervised task is staged disabled. The project commands below generate an
 XML file or work with a local pause marker. Registration, enablement and the
 handoff from the foreground collector require a separately approved rollout.

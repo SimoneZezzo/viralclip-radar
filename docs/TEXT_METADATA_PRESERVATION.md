@@ -1,16 +1,20 @@
 # Text metadata preservation
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 Proposal of 2026-11-26. **Status: option C APPROVED by the owner on
 2026-11-26, limited to `title`, `broadcaster_name` and `language`, and
 IMPLEMENTED LOCALLY the same day (`storage/database.py`,
-`tests/test_text_changes.py`); not deployed.** See
+`tests/test_text_changes.py`); never deployed (project closed on
+2026-11-26).** See
 [implementation](#implementation-2026-11-26). Deployment and any production step need
 separate owner authorization and a review (persistence and collectors are
 sensitive areas). This is a
-preventive infrastructure change during V1. It does not start V2, it adds no
+preventive infrastructure change during V1. It adds no
 model feature, and it leaves every V1 protocol, export and evaluator
-unchanged. It revisits the observed-metadata capture cancelled on 2026-11-25
-([decision](PROJECT_HISTORY.md#2026-11-25-feature-and-generalization-plan-approved)),
+unchanged. It revisits the observed-metadata capture cancelled on 2026-11-25,
 which the owner re-approved in this minimal form. The separate table
 compatible with schema v2 is an explicitly temporary solution; folding it
 into the versioned migrations is re-evaluated after V1.
@@ -49,8 +53,7 @@ For a clip and cutoff instant `T = created_at + cutoff`:
 Titles of the third case must never be presented as recoverable. The second
 case is selection-biased (clips rediscovered late are excluded, and late
 rediscovery depends on view rank) and its share is UNKNOWN until a read-only
-query runs on a sealed copy with authorization. Whether V2 may use it is a
-V2 protocol decision. How often Twitch titles change in the first hour is
+query runs on a sealed copy with authorization. How often Twitch titles change in the first hour is
 UNKNOWN.
 
 ## Options compared
@@ -196,12 +199,11 @@ Evidence on synthetic data only:
   recreated, query plans of the code's own queries using indexes with no
   scan or temporary sort, non-text metadata rejected, collector refresh end
   to end).
-- Independent review (reviewer sub-review; reviewer at its usage limit until
-  November 29): 20,000 random out-of-order sequences found no value at any
+- Independent review: 20,000 random out-of-order sequences found no value at any
   `T` other than the latest observed at or before `T`. Its findings (replay
   after a skipped observation, index tie-break sort, non-text fields on
   scheduled refresh, test gaps) are fixed; the restoration limit above is
-  documented. A reviewer review remains advisable before any deployment.
+  documented.
 - `viralclip synthetic-dry-run` at `dfc0ebd` and with the change: dataset,
   benchmark and registry outputs byte-identical (only the absolute path in
   the benchmark manifest and the collector database differ); `health`
@@ -232,7 +234,7 @@ Evidence on synthetic data only:
    databases open with the version still 2; `m2_audit`, `reliability`,
    `deployment preflight`, `health` and `dataset` outputs unchanged on a
    fixture; measured bytes per row with `dbstat`. Then strict
-   `verify_offline.py` and a reviewer review.
+   `verify_offline.py` and an independent review.
 3. **Roll out** (separate authorization, approved runbook): one collector at
    a time outside formal cutoff windows, after a fresh preflight; record the
    start time per database. Data before that time stays as described above.

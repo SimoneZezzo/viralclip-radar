@@ -1,14 +1,93 @@
 # ViralClip Radar
 
-ViralClip Radar prospectively collects public Twitch clip metadata and actual
-view-count observations. The collector stores metadata and observations at
-their real timestamps. Model validation requires mature chronological cohorts.
+ViralClip Radar asks one question: **using only what is known in a clip's first
+hour, can you tell which Twitch clips will be the most viewed at 24 hours?**
 
-## Local portfolio demo
+Twitch keeps no view history for clips, so the answer cannot be studied from a
+public dataset. The project therefore built the dataset prospectively: a
+collector that discovers new clips and re-measures each one at fixed ages,
+storing every view count with its real UTC timestamp. On top of it sits a
+leakage-safe research pipeline (point-in-time features, chronological splits,
+embargoed labels, pre-declared baselines and challengers) and a small ranking
+demo.
 
-The demo is a React + TypeScript app (`web/`, built with Vite and Tailwind CSS)
-served by a FastAPI backend. Build the front end once, then start the server
-from the checkout:
+## Project status: closed
+
+Collection ran 24/7 from November 17 to November 26, 2026 on a Linux VPS,
+with GTA V and GTA VI as separate services. Before using the data for
+research, I asked Twitch for written permission. On November 26, 2026 Twitch
+declined research use of the data. I stopped both collectors the same day
+and deleted every collected database, copy, export and HTTP log.
+
+As a result, **this repository reports no model results on real data**.
+Everything below that produces numbers runs on labeled synthetic data, which
+validates the mechanics, not predictive performance.
+
+| Implemented and tested (synthetic data, mocked HTTP) | Never measured on real data |
+| --- | --- |
+| Collector, scheduling, retries, rate-limit handling, storage invariants | Whether any baseline or model ranks real clips better than `latest_views` |
+| Point-in-time export, label windows, cohort audit, chronological splits and embargo | Ranking metrics, uncertainty intervals and lift on real cohorts |
+| Four baselines, the c1 challenger and the c2 model comparison (ridge, XGBoost, LightGBM, MLP) | Feature importance, calibration and creator holdout on real data |
+| Ranking registry, outcome linking, static publishing, FastAPI API and React dashboard | Live rankings of real clips |
+| Operational tooling, run in production for ten days (health, reliability monitor, 48-hour journal check) | Reboot rehearsal and cold-start recovery |
+
+## What was built
+
+| Area | What it does |
+| --- | --- |
+| Collector | Official Helix API, OAuth app token, popularity-ordered discovery with overlapping UTC minute windows, persistent idempotent re-measurement jobs at 10 min, 30 min, 60 min, 6 h and 24 h, batches of 100, bounded retries, 401 and 429 handling, JSONL HTTP telemetry |
+| Storage | SQLite with WAL, foreign keys, one OS-locked writer per database, additive migrations, append-only observations; missing, unavailable and late kept distinct from zero views |
+| Operations | Two systemd services on Ubuntu with separate accounts, databases and locks; boot enablement; five-minute read-only reliability monitor; read-only `health` command with HEALTHY, DEGRADED and CRITICAL rules; online backup, manifest and isolated restore tooling; passed a paired 48-hour journal check with no unexplained gaps |
+| Point-in-time dataset | Features only from observations taken at or before the cutoff (30, 35, 60 or 65 min); 24-hour label window of 86,400 to 86,700 s; immature, unavailable and censored outcomes stay explicit |
+| Evaluation | Chronological train, validation and test days with a 24h + 5 min embargo; per-day cohort audit; four baselines; day-level bootstrap with paired differences; analytic random and ideal references; frozen protocols so results stay reproducible |
+| Models | A frozen staleness-projection challenger, then ridge, XGBoost, LightGBM and an MLP on safe and exploratory feature sets, with sealed models |
+| Ranking registry | Append-only record of live rankings at the cutoff; 24-hour outcomes linked later without changing any prediction |
+| Demo | React + TypeScript (Vite, Tailwind CSS, TanStack Query) served by FastAPI, plus a static build for object storage |
+| Quality gate | One strict offline verifier: pytest (327 tests), Ruff, Git, Bash and PowerShell syntax, ESLint, TypeScript, Vitest, Playwright and a packaging check from the committed `HEAD`; CI on Windows and Ubuntu |
+
+```mermaid
+flowchart LR
+    H[Twitch Helix API] --> C[Collector<br/>discovery + timed jobs]
+    C --> DB[(SQLite, WAL<br/>append-only observations)]
+    DB -->|read-only| HM[health / reliability monitor]
+    DB -->|sealed copy| DS[Point-in-time dataset<br/>cutoff features + 24h labels]
+    DS --> EV[Chronological evaluation<br/>baselines, challengers, bootstrap]
+    DB -->|read-only| RK[Ranking registry<br/>rank, link-outcomes]
+    RK --> UI[React demo / static JSON]
+```
+
+## Methodological choices worth noting
+
+- **No backfilling.** A clip first seen after a target age gets that target
+  marked missed. Historical view counts are never reconstructed.
+- **Actual age, not target age.** A job keeps its target age and its actual
+  measurement time separately, so a late 60-minute reading never passes as an
+  on-time one.
+- **Coverage is never assumed.** Discovery is popularity-ordered and capped,
+  so the database records truncated windows. The primary cohort policy only
+  counts days whose discovery coverage can be verified, and the
+  `observed-at-cutoff` cohort is reported separately.
+- **Decisions before data.** Cutoffs, splits, endpoints, gap tolerances and
+  challenger definitions were frozen before any test day was scored.
+- **Text metadata point in time.** Titles and names change after the cutoff,
+  so an append-only change ledger records them as observed instead of reading
+  the overwritten current value.
+
+## Run it locally
+
+Requirements: Python 3.11+, [uv](https://docs.astral.sh/uv/), Node.js for
+the web demo. No credentials or real data are needed for any of the following.
+
+```powershell
+uv sync --locked
+uv run --offline --no-sync python -B scripts/verify_offline.py --strict
+```
+
+The verifier reports each check as `PASS`, `FAIL`, `SKIP` or `UNKNOWN`. Exit
+`1` means a failed check; exit `2` means an unknown result or a skip in strict
+mode. On Ubuntu, install PowerShell to run its parser check.
+
+### Ranking demo (synthetic)
 
 ```powershell
 npm --prefix web ci
@@ -16,270 +95,78 @@ npm --prefix web run build
 uv run --offline --no-sync viralclip demo
 ```
 
-Open `http://127.0.0.1:8765` and stop the server with Ctrl+C. The synthetic
-registry defaults to `data/demo/registry-v3.sqlite3`; `--registry PATH`
-selects another one, as the end-to-end tests do with a new path per run. For front-end
-work, keep the demo running and use `npm --prefix web run dev`, which proxies
-`/api` to it. `npm ci` needs network access once; builds and tests then run
-offline. FastAPI and Uvicorn are in the uv `dev` group, so collector installs
-do not need them.
+Open `http://127.0.0.1:8765`. The demo builds a collector database of clips
+labeled `SYNTHETIC / NOT REAL TWITCH DATA`, ranks it through the live ranking
+registry and shows a relative 1–100 score per clip. It only selects clips: each
+card offers the clip link and links to external editors, and the site never
+downloads, uploads or edits video. Synthetic clips link to the reserved
+`example.invalid` domain.
 
-The demo builds a collector database holding only synthetic clips, labeled
-`SYNTHETIC / NOT REAL TWITCH DATA`, ranks it through the live ranking
-registry and stores the runs in `data/demo/registry-v3.sqlite3`. GTA VI
-shows simulated model scores and GTA V shows `latest_views` baseline scores.
-The score runs from 1 to 100 relative to the selected game and pool.
-Estimated views are an internal input to the simulated model.
-
-The service only selects clips. Each clip card offers the clip link with
-**Copy clip link** and **Open on Twitch**, plus links to external editors
-the user chooses and pays for. The site never downloads, uploads or edits
-video. Synthetic clips have no Twitch page, so their link uses the reserved
-`example.invalid` domain and **Open on Twitch** stays disabled with a reason.
-The demo needs no account or credentials.
-
-## Quick start (Windows PowerShell)
-
-Install [uv](https://docs.astral.sh/uv/), then from the repository directory:
+### Synthetic end-to-end run
 
 ```powershell
-uv sync
-Copy-Item .env.example .env
-# Edit .env and set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET.
+uv run --offline --no-sync viralclip synthetic-dry-run --output data/dry-run
+```
+
+This generates a synthetic collector database, then runs the point-in-time
+export, the benchmark protocol, a daily replay of the ranking registry at the
+60-minute cutoff and 24-hour outcome linking. It writes `summary.json` in a new
+Git-ignored directory. The numbers describe the generator, not Twitch.
+
+## Using the collector
+
+The collector works with your own Twitch application from the
+[Developer Console](https://dev.twitch.tv/console/apps). Review the current
+Twitch terms before collecting or using any data.
+
+```powershell
+Copy-Item .env.example .env   # set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET
 uv run viralclip init-db
 uv run viralclip collect --game "Grand Theft Auto V" --once
-uv run viralclip status
-uv run pytest
-```
-
-Create a Twitch application in the [Twitch Developer Console](https://dev.twitch.tv/console/apps).
-Put its Client ID and Client Secret in `.env`; do not commit that file. The
-collector uses an OAuth app access token and the official Helix API. No
-credentials are needed for `init-db` or `status`.
-
-The collector resolves a game name to its actual Twitch category ID. If Twitch
-does not return an exact category match, collection stops with an error; it
-never substitutes another GTA category. You can instead provide category IDs
-using `VIRALCLIP_GAME_IDS` or repeated `--game-id ID` options.
-
-## Offline verification
-
-From a Git checkout, install the locked development dependencies once, then
-run the same verifier used by CI on Windows and Ubuntu.
-
-```text
-uv sync --locked
-uv run --offline --no-sync python -B scripts/verify_offline.py --strict
-```
-
-The verifier uses synthetic fixtures and disables dotenv. It reports pytest
-counts, Ruff, Git whitespace, Bash syntax, PowerShell parsing and a verified
-source archive of the committed `HEAD`. Each check reports `PASS`, `FAIL`,
-`SKIP` or `UNKNOWN`. Exit `1` means a failed check. Exit `2` means an unknown
-result or a skip in strict mode. Omit `--strict` to allow reported skips when
-an optional interpreter is unavailable. On Windows, Git for Windows supplies
-Bash. On Ubuntu, install PowerShell to run its parser locally.
-
-The release command and its inventory checks are documented in the
-[operations runbook](docs/MILESTONE_1_ROLLOUT.md#package-a-reviewed-git-revision).
-
-## Continuous collection
-
-Set `VIRALCLIP_GAMES` and optionally `VIRALCLIP_GAME_IDS` in `.env`, then run:
-
-```powershell
 uv run viralclip collect --loop
-```
-
-Leave that terminal and computer running; Ctrl+C stops cleanly. The default
-discovery interval is 300 seconds with a 30-minute overlapping lookback. Tune
-`DISCOVERY_INTERVAL_SECONDS` and `DISCOVERY_LOOKBACK_MINUTES` as needed. A
-sleeping, shut down, or disconnected computer creates collection gaps that
-cannot be recovered from historical Twitch clip view counts.
-Run only one collector process against a given database at a time.
-The collector enforces this with a local OS file lock; status remains available.
-Snapshot jobs are checked every five seconds between discovery cycles and before
-each discovery page. Slow HTTP calls and rate-limit waits can still delay them.
-
-The SQLite database defaults to `data/viralclip.sqlite3`; override it with
-`VIRALCLIP_DB_PATH` or the global `--db` option. SQLite uses WAL, foreign keys,
-versioned migrations, append-only snapshots, and persistent per-clip jobs.
-
-## Collector health
-
-From a second terminal, run:
-
-```powershell
 uv run viralclip health
-uv run viralclip --db "path/to/collector.sqlite3" health
 ```
 
-Health uses a consistent read-only SQLite transaction, sees committed WAL data,
-and requires no Twitch credentials. It creates no database and runs no migrations.
-The report uses UTC and evaluates all categories stored in the database, so a
-stale category can affect the result even when another category is current.
+A game name must resolve to an exact Twitch category; otherwise collection
+stops, and it never substitutes another category. `VIRALCLIP_GAME_IDS` or
+repeated `--game-id ID` options pin category IDs. Only one collector may write
+to a database at a time, enforced by an OS file lock. `health` opens SQLite
+read-only, needs no credentials and runs no migrations:
 
-| Status | Exit code | Rule |
+| Status | Exit | Rule |
 | --- | --- | --- |
-| HEALTHY | 0 | No investigation thresholds triggered |
-| DEGRADED | 1 | A category has no successful discovery or checkpoint yet, discovery or a checkpoint is older than the larger of 10 minutes or two discovery intervals, a job is overdue by more than 5 minutes, a failure awaits retry, a target's recent P95 lateness exceeds 5 minutes, or recent discovery/operational errors or incomplete windows beyond the checkpoint are present |
-| CRITICAL | 2 | Discovery or a checkpoint is older than the larger of 30 minutes or six intervals, a job is overdue by more than 15 minutes, a job has exhausted its three attempts, or the database or required records cannot be read |
+| HEALTHY | 0 | No investigation threshold triggered |
+| DEGRADED | 1 | Stale discovery or checkpoint (over max(10 min, two intervals)), a job overdue by more than 5 minutes, a failure awaiting retry, recent P95 lateness over 5 minutes, or recent errors or incomplete windows |
+| CRITICAL | 2 | Discovery or checkpoint older than max(30 min, six intervals), a job overdue by more than 15 minutes, a job that exhausted its three attempts, or an unreadable database |
 
-Counts and strict early coverage are cumulative. Overdue jobs are due
-pending, running, or failed jobs. Missed-at-discovery and unavailable outcomes
-remain separate and do not independently trigger alerts. A clip has early coverage
-when it has any actual observation at or before its 10m, 30m, or 60m deadline,
-among clips with that target already due. For example, a scheduled 60m
-measurement that arrives one second late contributes to lateness and cannot
-count for strict 60m coverage.
+Other commands (`--help` on each): `dataset` builds point-in-time extracts,
+`evaluate` runs the chronological protocols, `rank`, `link-outcomes` and
+`shortlist` manage the ranking registry, and `publish` writes static ranking
+JSON for the front end.
 
-Discovery run counts, operational errors, and scheduled lateness use the last
-hour. Lateness compares each completed job's linked observation time with its
-due time and uses nearest-rank P95. A truncated parent window still appears in
-the report when subdivision advances the checkpoint past it. Completed windows
-describe recorded API searches. Actual coverage across Twitch is unknown.
-The latest five recent error entries include timestamps, row IDs, and coarse
-categories. Raw error messages are omitted.
+## Documentation
 
-## Twitch HTTP telemetry
+- [Product and engineering specification](docs/PROJECT_SPECIFICATION.md)
+- [Point-in-time dataset](docs/POINT_IN_TIME_DATASET.md)
+- [Chronological evaluation](docs/CHRONOLOGICAL_EVALUATION.md)
+- [Cohort audit](docs/M2_COHORT_AUDIT.md)
+- [Linux deployment](docs/LINUX_DEPLOYMENT.md) and
+  [dual-collector operations](docs/DUAL_COLLECTOR_OPERATIONS.md)
 
-An updated `collect` process writes UTF-8 JSON Lines next to its database.
-The default path is `data/viralclip.sqlite3.http.jsonl`. The name follows the
-database filename, including when using `--db`. Set `VIRALCLIP_HTTP_LOG_DIR`
-in the environment or `.env` to choose another directory, or set it to
-`off` to disable file logging. Use separate output paths for collectors with
-the same database filename. Each log has one writer.
+Some internal planning documents are written in Italian.
 
-The file opens on the first event. It rotates at approximately 5 MiB and
-retains three backups (`.1` newest through `.3` oldest), for roughly 20 MiB
-per collector. Write and rotation errors are ignored so collection can proceed.
-Use local storage because writes are synchronous. Existing collector processes
-keep their current behavior. Live telemetry begins when an updated collector
-starts collecting in a separately planned deployment.
+## Limitations
 
-- `http_request` records each attempt's coarse endpoint, status, monotonic
-  duration in milliseconds, and outcome, including timeouts, network errors and
-  HTTP 429. When present and valid, numeric rate-limit remaining and reset
-  epoch fields are included. Malformed values are omitted and identified by
-  field name.
-- `http_retry` records the next attempt and its reason. `rate_limit_wait`
-  records the planned sleep for a 429 retry or an exhausted bucket. Sum
-  `delay_seconds` from wait events alone to avoid double-counting retry delays.
-- `oauth_refresh` records attempts, successes and failures for initial token
-  acquisition, expiry-based renewal and renewal after a 401. The HTTP token
-  validation endpoint is recorded separately.
-
-Inspect the latest rate-limit pressure in PowerShell:
-
-```powershell
-Get-Content data/viralclip.sqlite3.http.jsonl -Tail 1000 |
-    ConvertFrom-Json |
-    Where-Object { $_.event -eq 'rate_limit_wait' -or $_.status -eq 429 -or $_.rate_limit_remaining -eq 0 }
-```
-
-Logs omit credentials, headers other than the two parsed numeric rate-limit
-fields, URLs, query parameters, request and response bodies, and exception text.
-The SQLite health command continues to report stored collector health independently.
-
-For a repeatable online backup, temporary restore drill, boot startup, crash
-recovery and operator controls on Windows, see the
-[Windows supervision runbook](docs/WINDOWS_SUPERVISION.md).
-For staged Oracle ARM64 or generic x86-64 setup and the single-writer
-handoff, see the [Linux deployment runbook](docs/LINUX_DEPLOYMENT.md).
-For the active no-backup policy, collector health and disk monitoring, see the
-[collection and monitoring plan](docs/MILESTONE_1_ROLLOUT.md#current-collection-and-monitoring-plan).
-
-## What the observations mean
-
-Discovery records the clip's current view count with its actual fetch time.
-The collector schedules prospective observations at 10 minutes, 30 minutes,
-60 minutes, 6 hours, and 24 hours after clip creation. If a clip is first
-discovered after a target age, that target is marked missed; no historical
-value is fabricated. A clip absent from a refresh response is recorded as
-unavailable, never as zero views. Overlapping discovery can capture multiple
-real observations, while duplicate observations from the same ingestion
-timestamp are ignored. Twitch discovery is popularity-ordered and limited, so
-the database records windows that may be truncated and does not claim
-exhaustive coverage.
-
-Jobs retain their target ages separately from actual measurement ages. After a
-restart, multiple overdue targets may share one current snapshot, linked through
-`jobs.snapshot_id`; that observation is not an on-time historical measurement.
-Failed jobs retry after at least 30 seconds, up to three job attempts (each HTTP
-request also has bounded retries). Exhausted jobs remain failed for inspection.
-GTA V legacy discovery uses at most 20 logical page requests per cycle, splitting
-windows near 900 results. GTA VI uses fixed structural lanes instead: 10 recent
-pages, 7 overlap pages plus up to 3 time-bounded extra pages
-(`VIRALCLIP_GTA_VI_OVERLAP_PAGES`, 8 in production) and 3 history or retry pages. Incomplete windows are marked partial and do not advance
-the category checkpoint. Severe saturation can prevent catch-up; inspect coverage
-before using these observations for research.
-
-The API and application access remain subject to Twitch rate limits and terms.
-This project stores operational clip metadata locally; review applicable Twitch
-terms before redistributing collected data or derived datasets.
-
-## Point-in-time dataset
-
-Use `uv run viralclip dataset --help` to build local, read-only extracts at
-30, 35, 60 and 65 minutes with linked 24-hour outcomes. See the
-[dataset guide](docs/POINT_IN_TIME_DATASET.md) for the audit files, selection
-rules, and reproducible PowerShell examples.
-
-Use `uv run viralclip evaluate --help` to compare chronological ranking
-baselines from local dataset artifacts. See the
-[evaluation guide](docs/CHRONOLOGICAL_EVALUATION.md) for split maturity,
-matched cohorts, metrics and the insufficient-data behavior.
-
-## Live ranking registry
-
-`uv run viralclip rank` scores one game, UTC creation day and cutoff with the
-declared `latest_views` baseline and seals the run in a separate, append-only
-SQLite registry under a Git-ignored path. The run records
-`model_status=not_trained_yet` until a validated model exists. Only clips
-observed by their cutoff enter the pool, and only observations at or before
-the cutoff are used. `viralclip link-outcomes` later attaches settled 24-hour
-outcomes in their own table without changing any prediction, and
-`viralclip shortlist` prints the top K of the latest run for a pool. Both
-writing commands read the collector database read-only.
-
-## Synthetic dry run
-
-`uv run --offline --no-sync viralclip synthetic-dry-run --output data/dry-run`
-builds a collector database of `SYNTHETIC / NOT REAL TWITCH DATA` clips on the
-preliminary 2/2/2 calendar, then runs the point-in-time export, benchmark
-protocol v1, a daily replay of the live ranking registry at the 60-minute
-cutoff and 24-hour outcome linking. The replay scores each test day once,
-after its last cutoff, so the summary counts ranked clips that already had a
-24-hour observation; it checks the cutoff of features, not live timeliness. It writes `summary.json` in a new Git-ignored directory and
-needs no credentials or real data. The numbers describe the generator, not
-Twitch.
+- No model was evaluated on real data, so no predictive claim is made.
+- Helix discovery is ordered by views and capped near 1,000 results per
+  query, which biases discovery toward popular clips; exhaustive coverage of a
+  category was never certified.
+- Ten days of collection would have given only a few mature chronological
+  days per split even with permission.
 
 ## License
 
-The code is released under the [MIT License](LICENSE). The license covers this
-repository's code only. Collected Twitch data, derived datasets and models stay
-private under the Twitch terms and are not part of the repository. Third-party
-dependencies and the bundled agent skills keep their own licenses. The demo
-artwork `web/public/gameplay.jpg` is an generated image that reviewer created
-for this project; it shows no real game footage.
-
-## Milestone and project progress
-
-See [PROJECT_STATUS.md](PROJECT_STATUS.md) for the maintained milestone checklist,
-saved session context, verification evidence, blockers and next steps.
-
-- [x] **Milestone 0 — Collector MVP:** CLI, Twitch OAuth/Helix client, SQLite
-  migrations, discovery, persistent snapshot jobs, retry/rate-limit handling,
-  and mocked tests are implemented and passed an independent audit;
-  see [the acceptance evidence](docs/PROJECT_HISTORY.md#2026-11-18-final-milestone-0-acceptance-go).
-- [x] **Milestone 0 — Live acceptance:** passed, including the prospective
-  post-restart cohort through 24 hours.
-- [ ] **Milestone 1 — 24/7 operations:** health, backup and restore, and live
-  telemetry verified. GTA V and GTA VI run as separate systemd services on
-  a Linux VPS and start at boot. The 48-hour monitoring gate and a reboot
-  rehearsal remain open. Windows supervision is prepared offline.
-- [ ] **Milestone 2 — Features and baselines:** point-in-time builder and
-  chronological evaluation harness verified. More mature days are needed
-  for real out-of-time scores.
-- [ ] **Milestone 3 — Machine learning:** not started.
-- [ ] **Milestone 4 — Demo and presentation:** not started.
+The code is released under the [MIT License](LICENSE). Third-party
+dependencies keep their own licenses. No Twitch data, derived datasets or
+models are included or retained. The demo uses abstract CSS placeholder
+artwork and shows no real game footage.

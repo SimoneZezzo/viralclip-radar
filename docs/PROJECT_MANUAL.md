@@ -1,12 +1,12 @@
 # ViralClip Radar — manuale del progetto
 
-Aggiornato al 24 novembre 2026 sul codice di `main` (`fe53f94`). Questo manuale spiega come funziona il sistema e perché. Non registra lo stato della produzione: per quello vale [PROJECT_STATUS.md](../PROJECT_STATUS.md), e le prove datate sono in [PROJECT_HISTORY.md](PROJECT_HISTORY.md#evidence-log). Quando il codice cambia un contratto descritto qui, aggiorna la sezione corrispondente.
+Aggiornato al 24 novembre 2026 sul codice di `main` (`fe53f94`). Questo manuale spiega come funziona il sistema e perché. Non registra lo stato della produzione: per quello vale [PROJECT_STATUS.md](../PROJECT_STATUS.md). Il progetto è chiuso dal 26 novembre 2026: i collector sono fermi e i dati raccolti cancellati, perciò ogni riferimento a produzione e dati reali descrive il sistema com'era progettato. Quando il codice cambia un contratto descritto qui, aggiorna la sezione corrispondente.
 
 ## 1. Scopo
 
 ViralClip Radar vuole indicare quali clip Twitch saranno le più viste a 24 ore usando solo ciò che si sa entro la prima ora. Twitch non conserva lo storico delle visualizzazioni: rileggere oggi una clip restituisce il conteggio di oggi. Il primo prodotto del progetto è quindi una serie di misure raccolte mentre accadono, con l'orario reale di ogni misura. Su questa serie si costruiscono feature, etichette e ranking valutati in ordine cronologico.
 
-Il perimetro M0–M4 è nella [specifica](PROJECT_SPECIFICATION.md). Gli obiettivi successivi per clipper e creator sono nella [visione di lungo termine](LONG_TERM_PRODUCT_VISION.md).
+Il perimetro M0–M4 è nella [specifica](PROJECT_SPECIFICATION.md).
 
 ## 2. Architettura
 
@@ -106,7 +106,7 @@ Invarianti garantite dal codice:
 - I job sono unici per clip e target, hanno al massimo tre tentativi e un nuovo tentativo dopo 30 secondi.
 - Stati dei job: `pending`, `running`, `completed`, `missed`, `failed`, `unavailable`.
 - Lo schema versionato è alla v2. La tabella `gta_vi_scan_attempts` viene creata al bisogno dal collector GTA VI e non cambia la versione, così gli strumenti che richiedono la v2 restano compatibili.
-- Per lo stesso motivo, come soluzione temporanea da rivalutare dopo V1, l'apertura del writer crea `clip_text_changes`: storico append-only delle variazioni di `title`, `broadcaster_name` e `language`, prima osservazione inclusa, scritto da discovery e refresh programmati con l'istante reale di osservazione. Il valore noto al tempo T è l'ultima riga con `observed_at <= T` (`Database.text_known_at`). La riga di `clips` resta sovrascritta a ogni discovery. Nessun componente V1 legge la tabella. [Dettagli](TEXT_METADATA_PRESERVATION.md)
+- Per lo stesso motivo, come soluzione temporanea, l'apertura del writer crea `clip_text_changes`: storico append-only delle variazioni di `title`, `broadcaster_name` e `language`, prima osservazione inclusa, scritto da discovery e refresh programmati con l'istante reale di osservazione. Il valore noto al tempo T è l'ultima riga con `observed_at <= T` (`Database.text_known_at`). La riga di `clips` resta sovrascritta a ogni discovery. Nessun componente V1 legge la tabella. [Dettagli](TEXT_METADATA_PRESERVATION.md)
 - WAL, chiavi esterne e un lock di sistema operativo impediscono due collector sullo stesso database. `status` apre il writer e può migrare; per ispezionare si usano `health` o `mode=ro`.
 
 ## 6. Pipeline di ricerca
@@ -215,7 +215,6 @@ assente per le clip senza dati sufficienti.
 | Argomento | Documento |
 | --- | --- |
 | Stato, priorità e prossimi passi | [PROJECT_STATUS.md](../PROJECT_STATUS.md) |
-| Prove datate e decisioni passate | [PROJECT_HISTORY.md](PROJECT_HISTORY.md#evidence-log) |
 | Requisiti e criteri di accettazione | [PROJECT_SPECIFICATION.md](PROJECT_SPECIFICATION.md) |
 | Avvio rapido, health, telemetria | [README.md](../README.md) |
 | Deploy Linux e due collector | [LINUX_DEPLOYMENT.md](LINUX_DEPLOYMENT.md), [DUAL_COLLECTOR_OPERATIONS.md](DUAL_COLLECTOR_OPERATIONS.md) |
@@ -223,4 +222,3 @@ assente per le clip senza dati sufficienti.
 | Backup e monitor | [BACKUP_AND_MONITORING.md](BACKUP_AND_MONITORING.md) |
 | Supervisione, backup e controlli su Windows | [WINDOWS_SUPERVISION.md](WINDOWS_SUPERVISION.md) |
 | Dataset, valutazione e audit M2 | [POINT_IN_TIME_DATASET.md](POINT_IN_TIME_DATASET.md), [CHRONOLOGICAL_EVALUATION.md](CHRONOLOGICAL_EVALUATION.md), [M2_COHORT_AUDIT.md](M2_COHORT_AUDIT.md) |
-| Versioni pianificate V1/V2 e backlog non vincolante | [LONG_TERM_PRODUCT_VISION.md](LONG_TERM_PRODUCT_VISION.md) |

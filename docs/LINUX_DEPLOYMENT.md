@@ -1,5 +1,9 @@
 # Linux VPS deployment and single-writer cutover
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 This is a staged runbook. Provisioning, installing on a real host and moving
 production each require explicit authorization. Keep the Windows loop
 collecting during VM setup and synthetic testing.

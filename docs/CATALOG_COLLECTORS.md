@@ -1,7 +1,11 @@
 # Catalog collectors
 
+> **Closed on 2026-11-26.** The collectors are stopped and all collected data
+> is deleted. This document is kept as a record of the design and procedures;
+> any production state, date or count below is historical.
+
 One additional Twitch category per collector, added one at a time (owner
-decision 2026-11-25, [action plan §5bis](ACTION_PLAN.md#5bis-feature-nuove-e-giochi-mai-visti)).
+decision 2026-11-25).
 Each catalog collector runs the existing legacy discovery path, which is
 adequate for the observed-at-cutoff population; category-wide coverage is
 not certified. GTA V and GTA VI keep their own units and are never touched by
@@ -78,7 +82,7 @@ sudo -n systemd-run --quiet --wait --pipe --collect -p User="vcg-$ID" -p Group="
 ```
 
 The release ships tests whose dev scripts it leaves out
-(`tests/test_peer_review.py`, `tests/test_verify_parsers.py` and one
+(`tests/test_verify_parsers.py` and one
 `verify_offline` test in `tests/test_predictions.py`); they fail on the VPS
 by design of the allowlist and do not cover the collector. The unit's preflight refuses a missing database,
 missing credentials, any other category, a changed cadence or a database that
