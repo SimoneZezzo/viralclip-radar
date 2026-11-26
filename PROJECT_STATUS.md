@@ -15,7 +15,7 @@ dated samples below is **UNKNOWN**.
    results using only history available before prediction.
 
 [Priority decision](docs/PROJECT_HISTORY.md#2026-11-24-product-objective-priorities) ·
-[Creator workflows after M4](docs/LONG_TERM_PRODUCT_VISION.md)
+[Planned versions V1/V2 and backlog](docs/LONG_TERM_PRODUCT_VISION.md#versioni-pianificate)
 
 ## Milestones
 
@@ -288,6 +288,11 @@ November 24. The private GitHub repository was
 deleted on November 24 after the initial import passed CI on Windows and
 Ubuntu; future publication will use a reviewed release copy.
 [Import evidence](docs/PROJECT_HISTORY.md#2026-11-24-private-github-import-and-verification)
+Read-only check on November 26 (`git ls-remote`): `origin`
+(`SimoneZezzo/viralclip-radar`) now holds a separate code-only history of 13
+commits created on November 25 (head `038a2dc`), with no common ancestor
+with local `main`. None of the November 26 commits is on GitHub; local
+`main` still tracks `origin/main`, so do not push or pull it there.
 On November 24, strict offline verification passed 9/9 checks on Windows:
 pytest, Ruff lint and format, Git, Bash, PowerShell, Web (ESLint, TypeScript,
 Vitest, Vite build), Web e2e (Playwright) and packaging. Workflow phases P0–P2
