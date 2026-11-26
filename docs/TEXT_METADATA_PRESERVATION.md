@@ -1,8 +1,10 @@
 # Text metadata preservation
 
 Proposal of 2026-11-26. **Status: option C APPROVED by the owner on
-2026-11-26 for local implementation, limited to `title`, `broadcaster_name`
-and `language`; not deployed.** Deployment and any production step need
+2026-11-26, limited to `title`, `broadcaster_name` and `language`, and
+IMPLEMENTED LOCALLY the same day (`storage/database.py`,
+`tests/test_text_changes.py`); not deployed.** See
+[implementation](#implementation-2026-11-26). Deployment and any production step need
 separate owner authorization and a review (persistence and collectors are
 sensitive areas). This is a
 preventive infrastructure change during V1. It does not start V2, it adds no
@@ -146,6 +148,75 @@ Insert when no row exists for the clip, or when the latest row (by
 `observed_at`, then `change_id`) differs on any field compared with `IS NOT`
 (NULL-safe). A NULL observed value is stored as observed, never filled from a
 later observation.
+
+## Implementation (2026-11-26)
+
+- `Database.ensure_text_ledger()` runs after `migrate()` when the writer
+  opens. It does nothing when the table and both triggers exist; otherwise it
+  creates the missing objects with `IF NOT EXISTS` in one `BEGIN IMMEDIATE`
+  transaction. `schema_migrations` stays `[1, 2]`.
+- `record_clip` and `add_scheduled_snapshot(..., text=...)` call
+  `_record_text` inside their existing transaction, after the snapshot, with
+  the snapshot's own `observed_at` (the actual acquisition time). The
+  collector passes the parsed Helix clip on scheduled refreshes; callers that
+  pass no text record none. The `clips` UPSERT is unchanged.
+- Change test: the row for the latest `observed_at <= t` compared field by
+  field with Python equality, so NULL to value, value to NULL and NULL versus
+  empty string are changes. Two rows at the same instant (discovery and
+  scheduled) resolve by `source`, so the unique index serves the whole
+  `ORDER BY` with no temporary sort. Text is recorded only when the
+  observation's snapshot is actually inserted: a replay at the same
+  `(clip_id, observed_at, source)` keeps its first text, like its views.
+- `_parse_clip` rejects a non-string `title`, `broadcaster_name` or
+  `language` (NULL allowed) as invalid Helix data; on a scheduled refresh
+  this fails that clip's jobs instead of aborting the batch.
+- Out-of-order observations (for example after a clock step): if a change
+  is inserted before the clip's next snapshot and no text row lies between,
+  that next observation had been skipped as equal to the previous value, so
+  the previous value is appended at that snapshot's time and source. Then
+  "latest row `<= T`" stays exact for every `T`. Known limit: this assumes
+  that next observation carried text. It holds for the collector, which
+  always passes text; it fails only if a clock step goes back before a
+  snapshot recorded without text (before deployment, or by a test or
+  synthetic caller that omits `text`), where the restored value may not be
+  the one actually observed.
+- `Database.text_known_at(clip_id, at)` returns the preserved value known at
+  `at`. Nothing in V1 reads the table: exports, evaluators and the registry
+  are unchanged.
+- No backfill: clips seen before deployment have no rows until their next
+  observation, which is recorded at its own time.
+
+Evidence on synthetic data only:
+
+- 18 new tests (first observation time, unchanged observations, cutoffs
+  30/35/60/65, NULL and empty transitions, replays including a replay after
+  a skipped observation, out-of-order cases, append-only triggers, rollback
+  of the whole observation, no text without text, schema still v2 with the
+  `deployment` schema check passing, missing ledger and missing trigger
+  recreated, query plans of the code's own queries using indexes with no
+  scan or temporary sort, non-text metadata rejected, collector refresh end
+  to end).
+- Independent review (reviewer sub-review; reviewer at its usage limit until
+  November 29): 20,000 random out-of-order sequences found no value at any
+  `T` other than the latest observed at or before `T`. Its findings (replay
+  after a skipped observation, index tie-break sort, non-text fields on
+  scheduled refresh, test gaps) are fixed; the restoration limit above is
+  documented. A reviewer review remains advisable before any deployment.
+- `viralclip synthetic-dry-run` at `dfc0ebd` and with the change: dataset,
+  benchmark and registry outputs byte-identical (only the absolute path in
+  the benchmark manifest and the collector database differ); `health`
+  output identical.
+- Measured size (`dbstat`, 20,000 clips, 8 observations each, titles of
+  15–75 characters, about 10% of clips changing once): 22,261 rows, 5.86 MB
+  for table and index, **263 bytes per row, 293 bytes per clip** (265 and
+  296 on a 5,000-clip rerun after the review fixes). Scaled to
+  the documented volumes: GTA VI 42–56 MB/day, GTA V 1.6 MB/day, Fortnite
+  and VALORANT 6.4 MB/day; **50–64 MB/day, 1.5–1.9 GB/month** for four
+  games, inside the estimate above.
+- Overhead: an unchanged scheduled refresh costs about 5 µs more in memory
+  (34.4 versus 29.4 µs per call, after the review fixes); on disk a committed observation costs about
+  1.7 ms, so the added cost is under 1% and adds no commit. Helix requests
+  are unchanged.
 
 ## Minimal plan, subject to separate authorization
 

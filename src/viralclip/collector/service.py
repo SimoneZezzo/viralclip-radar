@@ -361,6 +361,11 @@ class Collector:
             created_at = datetime.fromisoformat(raw["created_at"])
             if created_at.tzinfo is None or created_at.utcoffset() is None:
                 raise ValueError("created_at must include a timezone")
+            if any(
+                not isinstance(raw.get(field), str | None)
+                for field in ("title", "broadcaster_name", "language")
+            ):
+                raise ValueError("invalid text metadata")
             return {
                 "id": str(raw["id"]),
                 "created_at": created_at.astimezone(UTC),
@@ -414,7 +419,7 @@ class Collector:
                         int(clip_jobs[0]["target_age_seconds"]) if len(clip_jobs) == 1 else None
                     )
                     self.database.add_scheduled_snapshot(
-                        clip_id, observed_at, parsed["view_count"], target, ids
+                        clip_id, observed_at, parsed["view_count"], target, ids, text=parsed
                     )
                 except (TwitchAPIError, ValueError) as exc:
                     self.database.finish_jobs(ids, "failed", observed_at, str(exc))

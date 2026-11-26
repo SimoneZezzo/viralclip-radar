@@ -106,6 +106,7 @@ Invarianti garantite dal codice:
 - I job sono unici per clip e target, hanno al massimo tre tentativi e un nuovo tentativo dopo 30 secondi.
 - Stati dei job: `pending`, `running`, `completed`, `missed`, `failed`, `unavailable`.
 - Lo schema versionato è alla v2. La tabella `gta_vi_scan_attempts` viene creata al bisogno dal collector GTA VI e non cambia la versione, così gli strumenti che richiedono la v2 restano compatibili.
+- Per lo stesso motivo, come soluzione temporanea da rivalutare dopo V1, l'apertura del writer crea `clip_text_changes`: storico append-only delle variazioni di `title`, `broadcaster_name` e `language`, prima osservazione inclusa, scritto da discovery e refresh programmati con l'istante reale di osservazione. Il valore noto al tempo T è l'ultima riga con `observed_at <= T` (`Database.text_known_at`). La riga di `clips` resta sovrascritta a ogni discovery. Nessun componente V1 legge la tabella. [Dettagli](TEXT_METADATA_PRESERVATION.md)
 - WAL, chiavi esterne e un lock di sistema operativo impediscono due collector sullo stesso database. `status` apre il writer e può migrare; per ispezionare si usano `health` o `mode=ro`.
 
 ## 6. Pipeline di ricerca

@@ -107,6 +107,69 @@ MIGRATIONS = (
     """,
 )
 
+TEXT_FIELDS = ("title", "broadcaster_name", "language")
+
+# Temporary, outside MIGRATIONS on purpose: several tools accept exactly schema v2.
+# Re-evaluate folding it into a versioned migration after V1 (TEXT_METADATA_PRESERVATION.md).
+TEXT_LEDGER = (
+    (
+        "clip_text_changes",
+        """
+        CREATE TABLE IF NOT EXISTS clip_text_changes (
+            change_id INTEGER PRIMARY KEY,
+            clip_id TEXT NOT NULL REFERENCES clips(clip_id),
+            observed_at TEXT NOT NULL,
+            source TEXT NOT NULL CHECK (source IN ('discovery', 'scheduled')),
+            title TEXT,
+            broadcaster_name TEXT,
+            language TEXT,
+            UNIQUE (clip_id, observed_at, source)
+        );
+        """,
+    ),
+    (
+        "clip_text_changes_no_update",
+        """
+        CREATE TRIGGER IF NOT EXISTS clip_text_changes_no_update
+        BEFORE UPDATE ON clip_text_changes
+        BEGIN
+            SELECT RAISE(ABORT, 'clip text changes are append-only');
+        END;
+        """,
+    ),
+    (
+        "clip_text_changes_no_delete",
+        """
+        CREATE TRIGGER IF NOT EXISTS clip_text_changes_no_delete
+        BEFORE DELETE ON clip_text_changes
+        BEGIN
+            SELECT RAISE(ABORT, 'clip text changes are append-only');
+        END;
+        """,
+    ),
+)
+
+
+# Ties at one instant (discovery and scheduled) resolve by source so the unique index
+# serves the whole ORDER BY without a temporary B-tree.
+TEXT_KNOWN_AT_SQL = """
+    SELECT observed_at, title, broadcaster_name, language FROM clip_text_changes
+    WHERE clip_id = ? AND observed_at <= ?
+    ORDER BY observed_at DESC, source DESC LIMIT 1
+"""
+TEXT_INSERT_SQL = """
+    INSERT OR IGNORE INTO clip_text_changes
+        (clip_id, observed_at, source, title, broadcaster_name, language)
+    VALUES (?, ?, ?, ?, ?, ?)
+"""
+NEXT_SNAPSHOT_SQL = """
+    SELECT observed_at, source FROM clip_snapshots WHERE clip_id = ? AND observed_at > ?
+    ORDER BY observed_at, source LIMIT 1
+"""
+NEXT_TEXT_SQL = (
+    "SELECT MIN(observed_at) FROM clip_text_changes WHERE clip_id = ? AND observed_at > ?"
+)
+
 
 def utc_now() -> datetime:
     return datetime.now(UTC)
@@ -139,6 +202,7 @@ class Database:
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA busy_timeout = 30000")
         self.migrate()
+        self.ensure_text_ledger()
         self._collector_lock = None
 
     def acquire_collector_lock(self) -> None:
@@ -202,6 +266,53 @@ class Database:
                 if self.connection.in_transaction:
                     self.connection.rollback()
                 raise
+
+    def ensure_text_ledger(self) -> None:
+        names = [name for name, _ in TEXT_LEDGER]
+        placeholders = ",".join("?" for _ in names)
+        present = self.connection.execute(
+            f"SELECT COUNT(*) FROM sqlite_schema WHERE name IN ({placeholders})", names
+        ).fetchone()[0]
+        if present == len(names):
+            return
+        try:
+            self.connection.executescript(
+                "BEGIN IMMEDIATE;\n" + "".join(sql for _, sql in TEXT_LEDGER) + "\nCOMMIT;"
+            )
+        except sqlite3.Error:
+            if self.connection.in_transaction:
+                self.connection.rollback()
+            raise
+
+    @staticmethod
+    def _record_text(
+        conn: sqlite3.Connection, clip_id: str, seen_at: str, source: str, text: dict
+    ) -> None:
+        """Append the observed text when it differs from the value known at `seen_at`."""
+        values = tuple(text.get(field) for field in TEXT_FIELDS)
+        previous = conn.execute(TEXT_KNOWN_AT_SQL, (clip_id, seen_at)).fetchone()
+        if previous is not None and tuple(previous)[1:] == values:
+            return
+        inserted = conn.execute(TEXT_INSERT_SQL, (clip_id, seen_at, source, *values)).rowcount
+        if not inserted or previous is None:
+            return
+        # Out-of-order observation: the next later observation was compared with `previous`
+        # and skipped as unchanged; restore that value at its own time so it stays exact.
+        # Assumes that observation carried text: the collector always passes it.
+        later = conn.execute(NEXT_SNAPSHOT_SQL, (clip_id, seen_at)).fetchone()
+        if later is None:
+            return
+        following = conn.execute(NEXT_TEXT_SQL, (clip_id, seen_at)).fetchone()[0]
+        if following is not None and following <= later["observed_at"]:
+            return
+        conn.execute(
+            TEXT_INSERT_SQL, (clip_id, later["observed_at"], later["source"], *tuple(previous)[1:])
+        )
+
+    def text_known_at(self, clip_id: str, at: datetime) -> dict | None:
+        """Latest preserved text observed at or before `at`; None when none was observed."""
+        row = self.connection.execute(TEXT_KNOWN_AT_SQL, (clip_id, to_utc_iso(at))).fetchone()
+        return dict(row) if row else None
 
     def upsert_game(self, game_id: str, name: str, resolved_at: datetime) -> None:
         with self.transaction() as conn:
@@ -269,7 +380,7 @@ class Database:
                     seen_at,
                 ),
             )
-            conn.execute(
+            snapshot = conn.execute(
                 """
                 INSERT OR IGNORE INTO clip_snapshots
                     (clip_id, observed_at, age_seconds, view_count, source, target_age_seconds,
@@ -284,6 +395,8 @@ class Database:
                     run_id,
                 ),
             )
+            if snapshot.rowcount:  # a replayed observation keeps its first text, like its views
+                self._record_text(conn, clip_id, seen_at, "discovery", clip)
             if not existing:
                 self._create_jobs(conn, clip_id, clip["created_at"], observed_at)
             return existing is None
@@ -437,6 +550,7 @@ class Database:
         view_count: int,
         target_age: int | None,
         job_ids: list[int] | None = None,
+        text: dict | None = None,
     ) -> None:
         row = self.connection.execute(
             "SELECT created_at FROM clips WHERE clip_id = ?", (clip_id,)
@@ -447,19 +561,21 @@ class Database:
         if age < 0:
             raise ValueError("clip creation is after observation time; check the system clock")
         with self.transaction() as conn:
-            conn.execute(
+            inserted = conn.execute(
                 """
                 INSERT OR IGNORE INTO clip_snapshots
                     (clip_id, observed_at, age_seconds, view_count, source, target_age_seconds)
                 VALUES (?, ?, ?, ?, 'scheduled', ?)
                 """,
                 (clip_id, to_utc_iso(observed_at), age, view_count, target_age),
-            )
+            ).rowcount
             snapshot_id = conn.execute(
                 "SELECT snapshot_id FROM clip_snapshots "
                 "WHERE clip_id = ? AND observed_at = ? AND source = 'scheduled'",
                 (clip_id, to_utc_iso(observed_at)),
             ).fetchone()[0]
+            if text is not None and inserted:
+                self._record_text(conn, clip_id, to_utc_iso(observed_at), "scheduled", text)
             for job_id in job_ids or []:
                 conn.execute(
                     "UPDATE jobs SET status = 'completed', completed_at = ?, "
