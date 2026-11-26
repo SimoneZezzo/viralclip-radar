@@ -1,6 +1,6 @@
 # Project status and session handoff
 
-Last updated 2026-11-25 (Europe/Rome). This file holds only the current state,
+Last updated 2026-11-26 (Europe/Rome). This file holds only the current state,
 open gates and next actions. Past results live in the
 [evidence log](docs/PROJECT_HISTORY.md#evidence-log). How the system works is in
 the [project manual](docs/PROJECT_MANUAL.md). Live production state beyond the
@@ -39,9 +39,11 @@ runbook steps and console recovery access.
 [Closeout sequence](docs/PROJECT_HISTORY.md#2026-11-24-m1-gate-and-m2-calendar-preparation) ·
 [M1 closure gate](docs/M1_RELIABILITY_HARDENING.md#proposed-m1-closure-gate)
 
-**M2 readiness PARTIAL.** At the common 09:39:48 UTC watermark on November 24,
-November 22–24 yielded zero primary calendar candidates and zero feasible
-split pairs for either game. The observed-at-cutoff replay of GTA VI
+**M2 readiness PARTIAL.** At the common 08:01:54 UTC watermark on November 26,
+November 22–26 yielded zero primary calendar candidates and zero feasible
+split pairs for either game (expected under the legacy policy). November 24
+supports the observed-at-cutoff 60m train day; November 25 matures November 27
+00:05 UTC. The observed-at-cutoff replay of GTA VI
 November 19–21 returned `INSUFFICIENT DATA` at all cutoffs because of declared
 outages. The preliminary 60m calendar is:
 
@@ -71,6 +73,15 @@ experiment and reproducibility gates are met.
 
 ## Latest production evidence
 
+- **November 26, 08:00 UTC.** Owner-authorized read-only check: both
+  collectors HEALTHY, 0 errors, 0 execution failures; 28 GB free. Both
+  services were restarted at 06:27:49 UTC by unattended upgrades (about
+  1.5 s gap, under the ten-minute tolerance, no outage); a reboot is pending
+  for libc6 and a new kernel. Sealed copies at 08:01:54 UTC passed hash,
+  integrity and foreign keys; readiness November 22–26: 0 primary
+  candidates for both games (expected); November 24 GTA VI: 134,202 valid
+  labels matched at 60m.
+  [Evidence](docs/PROJECT_HISTORY.md#2026-11-26-health-check-sealed-copies-and-readiness-audit)
 - **November 25, 14:31 UTC.** Owner-authorized read-only `health` over SSH:
   both collectors HEALTHY, 0 operational errors in the last hour, 0
   execution failures. GTA V: 68,278 clips, discovery 74 s old, 2 overdue
@@ -204,10 +215,9 @@ November 29)
 [c2 fixes](docs/PROJECT_HISTORY.md#2026-11-25-c2-review-findings-fixed),
 [publishing fixes](docs/PROJECT_HISTORY.md#2026-11-25-static-publishing-and-plan-fixes)).
 
-**Authorized for November 26 (owner, November 25):** SSH access to make
-sealed private copies of both collector databases and run
-`m2_audit --readiness` on them (train days November 24–25). Read-only on
-production; scheduled for 08:00 UTC. November 25 matures November 27 00:05.
+**November 26 sealed copies and readiness: done** at 08:00 UTC
+([evidence](docs/PROJECT_HISTORY.md#2026-11-26-health-check-sealed-copies-and-readiness-audit)).
+November 25 matures November 27 00:05 and needs its own audit.
 
 **Prepared on November 25 (owner-authorized, nothing installed):** reboot
 evidence script and pre-reboot baseline, Fortnite prerequisites checked
