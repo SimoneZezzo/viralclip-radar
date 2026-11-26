@@ -222,4 +222,4 @@ assente per le clip senza dati sufficienti.
 | Backup e monitor | [BACKUP_AND_MONITORING.md](BACKUP_AND_MONITORING.md) |
 | Supervisione, backup e controlli su Windows | [WINDOWS_SUPERVISION.md](WINDOWS_SUPERVISION.md) |
 | Dataset, valutazione e audit M2 | [POINT_IN_TIME_DATASET.md](POINT_IN_TIME_DATASET.md), [CHRONOLOGICAL_EVALUATION.md](CHRONOLOGICAL_EVALUATION.md), [M2_COHORT_AUDIT.md](M2_COHORT_AUDIT.md) |
-| Visione dopo M4 e fasi M5–M11 | [LONG_TERM_PRODUCT_VISION.md](LONG_TERM_PRODUCT_VISION.md) |
+| Versioni pianificate V1/V2 e backlog non vincolante | [LONG_TERM_PRODUCT_VISION.md](LONG_TERM_PRODUCT_VISION.md) |

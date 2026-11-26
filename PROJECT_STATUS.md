@@ -254,6 +254,15 @@ and VALORANT around November 29 (owner creates its Twitch application).
    then VALORANT (`516575`), then League of Legends (`21779`), one at a
    time after the November 27 rehearsal, each with its own Twitch
    application ([volume probe](docs/PROJECT_HISTORY.md#2026-11-25-candidate-category-volume-probe)).
+3. [Text metadata preservation](docs/TEXT_METADATA_PRESERVATION.md)
+   (option C approved November 26 for local implementation; deployment
+   needs separate authorization): append-only changes of title,
+   broadcaster name and language, first observation included, about
+   54–77 MB/day for four games. Today rediscovery overwrites these fields
+   and scheduled refreshes discard them, so titles observed after the cutoff
+   are not recoverable. Planned versions are now two: V1 (current work,
+   unchanged) and V2 Text-Enhanced Ranking after V1
+   ([versions](docs/LONG_TERM_PRODUCT_VISION.md#versioni-pianificate)).
 
 - None.
 
