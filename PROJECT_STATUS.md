@@ -7,7 +7,8 @@ Last updated 2026-11-26 (Europe/Rome). How the system works is in the
 ## Final state: closed, data deleted
 
 ViralClip Radar is closed as an operational service and kept as a code-only
-portfolio project.
+portfolio project. The public GitHub repository carries this history since
+2026-11-26.
 
 On November 26, 2026 Twitch replied to a written request for research use
 that it is unable to allow the use of its user data for research purposes.
@@ -18,7 +19,7 @@ Collection ran from November 17 to November 26, 2026.
 | --- | --- |
 | Production collectors | Both services and both reliability timers stopped and disabled on the VPS (19:22 UTC); production markers removed; no process running. |
 | Collected data | Every VPS database, copy, recovery anchor, staging file and HTTP log deleted (19:22:45 UTC). All local databases, exports, evaluation outputs and audits deleted (local `data/` removed entirely). |
-| Credentials | Twitch credential files removed from the VPS (`/etc/viralclip`, shredded) and blanked in the local `.env`. The three Twitch applications must still be revoked by the owner in the Developer Console. |
+| Credentials | Twitch credential files removed from the VPS (`/etc/viralclip`, shredded) and blanked in the local `.env`. The three Twitch applications were revoked by the owner on 2026-11-26. |
 | System journal | Kept: it holds only aggregate operational lines (service state, queue and error counts, timestamps), with no clip IDs, titles, channel names or URLs. journald cannot delete one unit's entries without other services' logs; they expire under normal retention. |
 | VPS | Still provisioned with code under `/opt`, unit files and service accounts; no data. Deleting it needs owner authorization. |
 | Real-data research | Not allowed. No training, evaluation or calibration on Twitch data was or will be performed. |
@@ -39,14 +40,10 @@ deployment, live publishing and any public scoring.
 
 ## Next actions (owner)
 
-1. Revoke the three Twitch applications (GTA V, GTA VI, catalog) in the
-   Twitch Developer Console.
-2. Decide whether to delete the VPS.
-3. Decide how to handle the existing public GitHub repository before any
-   new publication (see the closure report).
+1. Decide whether to delete the VPS.
 
 ## Verification
 
 Run `uv run --offline --no-sync python -B scripts/verify_offline.py --strict`.
 It uses synthetic fixtures and mocked HTTP only; see the
-[README](README.md#run-it-locally).
+[README](README.md#quick-start).
